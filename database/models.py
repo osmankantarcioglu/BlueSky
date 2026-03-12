@@ -5,7 +5,7 @@ import os, sys
 # Ensure project root is on the path regardless of working directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import datetime
+import datetime as dt
 from peewee import (
     SqliteDatabase, Model,
     CharField, TextField, FloatField, IntegerField,
@@ -35,7 +35,7 @@ class TrackedUser(BaseModel):
     stance = CharField(null=True)      # 'alliance', 'opposition', 'unknown'
     domain = CharField(null=True)      # 'politics', 'science', 'both'
     source = CharField(null=True)      # csv, starter_pack, search
-    created_at = DateTimeField(default=datetime.datetime.utcnow)
+    created_at = DateTimeField(default=lambda: dt.datetime.now(dt.timezone.utc))
     is_active = BooleanField(default=True)
 
     class Meta:
@@ -62,7 +62,7 @@ class Post(BaseModel):
 
     # Metadata
     created_at = DateTimeField(index=True)
-    indexed_at = DateTimeField(default=datetime.datetime.utcnow)
+    indexed_at = DateTimeField(default=lambda: dt.datetime.now(dt.timezone.utc))
     language = CharField(null=True)      # 'tr', 'en', etc.
 
     # Engagement (updated from firehose events)
@@ -85,7 +85,7 @@ class LikeEvent(BaseModel):
     """Like events received from the firehose."""
     uri = CharField()          # URI of the liked post
     liker_did = CharField()
-    created_at = DateTimeField(default=datetime.datetime.utcnow)
+    created_at = DateTimeField(default=lambda: dt.datetime.now(dt.timezone.utc))
 
     class Meta:
         table_name = "like_events"
