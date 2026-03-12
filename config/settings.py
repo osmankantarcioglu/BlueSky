@@ -2,18 +2,18 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Bluesky hesap bilgileri
+# Bluesky account credentials
 BSKY_HANDLE = os.getenv("BSKY_HANDLE")
 BSKY_APP_PASSWORD = os.getenv("BSKY_APP_PASSWORD")
 
 # Feed domain
 FEED_DOMAIN = os.getenv("FEED_DOMAIN", "yourdomain.com")
 
-# Feed URI'leri (publish sonrası gerçek değerlerle güncelle)
+# Feed URIs (update with real values after publishing)
 FEED_URI_POLITICS = f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-siyaset"
 FEED_URI_SCIENCE  = f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-bilim"
 
-# Model
+# Model identifiers
 BERTURK_MODEL = "dbmdz/bert-base-turkish-cased"
 EMBEDDING_MODEL = "emrecan/bert-base-turkish-cased-mean-nli-stsb-tr"
 EMBEDDING_DIM = 768
@@ -21,16 +21,16 @@ EMBEDDING_DIM = 768
 # Database
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/feeds.db")
 
-# NLP eşik değerleri
-DOMAIN_SIMILARITY_THRESHOLD = 0.35
-STANCE_CONFIDENCE_THRESHOLD = 0.60
+# NLP thresholds
+DOMAIN_SIMILARITY_THRESHOLD = 0.35   # Posts above this score are added to the domain feed
+STANCE_CONFIDENCE_THRESHOLD = 0.60   # Minimum confidence for stance classification
 
-# Feed ayarları
-MAX_FEED_POSTS = 200
-FEED_CACHE_TTL = 300
-MIN_TURKISH_PROB = 0.80
+# Feed settings
+MAX_FEED_POSTS = 200       # Maximum number of posts kept in the feed
+FEED_CACHE_TTL = 300       # Cache duration in seconds
+MIN_TURKISH_PROB = 0.80    # langdetect Turkish probability threshold
 
-# Anahtar kelime listeleri
+# Keyword lists
 POLITICS_KEYWORDS = [
     "meclis", "tbmm", "milletvekili", "cumhurbaşkanı", "seçim",
     "parti", "hükümet", "muhalefet", "chp", "akp", "mhp", "hdp",
