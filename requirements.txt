@@ -4,3 +4,4 @@ flask
 waitress
 peewee
 python-dotenv
+psycopg2-binary

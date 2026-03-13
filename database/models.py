@@ -7,18 +7,30 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import datetime as dt
 from peewee import (
-    SqliteDatabase, Model,
+    SqliteDatabase, PostgresqlDatabase, Model,
     CharField, TextField, FloatField, IntegerField,
     BooleanField, DateTimeField
 )
 from config.settings import DATABASE_PATH
 
-# SQLite for development
-db = SqliteDatabase(DATABASE_PATH)
+# Use PostgreSQL when DATABASE_URL is set (Railway production),
+# otherwise fall back to SQLite (local development).
+_DATABASE_URL = os.getenv("DATABASE_URL")
 
-# For production, replace with:
-# from playhouse.pool import PooledPostgresqlExtDatabase
-# db = PooledPostgresqlExtDatabase(DATABASE_URL, max_connections=32, stale_timeout=300)
+if _DATABASE_URL:
+    # Railway provides: postgresql://user:pass@host:port/dbname
+    import urllib.parse as _urlparse
+    _u = _urlparse.urlparse(_DATABASE_URL)
+    db = PostgresqlDatabase(
+        _u.path.lstrip("/"),
+        user=_u.username,
+        password=_u.password,
+        host=_u.hostname,
+        port=_u.port or 5432,
+        autorollback=True,
+    )
+else:
+    db = SqliteDatabase(DATABASE_PATH)
 
 
 class BaseModel(Model):
