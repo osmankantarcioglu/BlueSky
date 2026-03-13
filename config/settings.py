@@ -9,9 +9,15 @@ BSKY_APP_PASSWORD = os.getenv("BSKY_APP_PASSWORD")
 # Feed domain
 FEED_DOMAIN = os.getenv("FEED_DOMAIN", "yourdomain.com")
 
-# Feed URIs (update with real values after publishing)
-FEED_URI_POLITICS = f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-siyaset"
-FEED_URI_SCIENCE  = f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-bilim"
+# Feed URIs — overridable via env after publish_feed.py runs
+FEED_URI_POLITICS = os.getenv(
+    "FEED_URI_POLITICS",
+    f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-siyaset"
+)
+FEED_URI_SCIENCE = os.getenv(
+    "FEED_URI_SCIENCE",
+    f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-bilim"
+)
 
 # Model identifiers
 BERTURK_MODEL = "dbmdz/bert-base-turkish-cased"
