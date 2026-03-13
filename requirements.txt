@@ -1,17 +1,6 @@
+# Feed server dependencies (used by Railway deployment)
 atproto==0.0.55
 flask
 waitress
 peewee
-transformers==4.40.0
-sentence-transformers
-torch
-scikit-learn
-numpy
-pandas
-requests
-httpx
 python-dotenv
-langdetect
-psycopg2-binary
-apscheduler
-datasets
