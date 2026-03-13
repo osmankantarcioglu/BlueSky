@@ -11,15 +11,28 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flask import Flask, jsonify, request, abort
-from database.models import db, Post
-from feed_generator.feed_logic import get_feed_posts
 from config.settings import (
     FEED_DOMAIN,
     FEED_URI_POLITICS,
     FEED_URI_SCIENCE,
+    DATABASE_PATH,
 )
 
+# Ensure the data directory exists before the DB module initialises the file
+os.makedirs(os.path.dirname(os.path.abspath(DATABASE_PATH)), exist_ok=True)
+
+from database.models import db, Post
+from feed_generator.feed_logic import get_feed_posts
+from database.models import create_tables
+
 app = Flask(__name__)
+
+# Create tables on first boot (safe to call multiple times)
+with app.app_context():
+    if db.is_closed():
+        db.connect()
+    create_tables()
+    db.close()
 
 # Map feed URI → domain label used in the database
 FEED_MAP = {
