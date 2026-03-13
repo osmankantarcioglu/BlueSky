@@ -22,7 +22,7 @@ EMBEDDING_DIM = 768
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/feeds.db")
 
 # NLP thresholds
-DOMAIN_SIMILARITY_THRESHOLD = 0.35   # Posts above this score are added to the domain feed
+DOMAIN_SIMILARITY_THRESHOLD = 0.50   # Posts above this score are added to the domain feed
 STANCE_CONFIDENCE_THRESHOLD = 0.60   # Minimum confidence for stance classification
 
 # Feed settings

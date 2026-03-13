@@ -229,7 +229,13 @@ class DomainClassifier:
         above = {d: s for d, s in scores.items() if s >= DOMAIN_SIMILARITY_THRESHOLD}
 
         if len(above) == 2:
-            return 'both', max(scores.values())
+            # Only return 'both' when scores are very close (within 0.04)
+            # Otherwise prefer the clearly dominant domain
+            sorted_above = sorted(above.items(), key=lambda x: x[1], reverse=True)
+            if sorted_above[0][1] - sorted_above[1][1] < 0.04:
+                return 'both', sorted_above[0][1]
+            else:
+                return sorted_above[0][0], sorted_above[0][1]
         elif len(above) == 1:
             label = list(above.keys())[0]
             return label, above[label]
