@@ -55,12 +55,10 @@ def get_feed_posts(
     limit = min(limit, 100)
     now = dt.datetime.now(dt.timezone.utc)
 
-    # Select posts that belong to this domain (includes 'both')
+    # Select posts that belong exclusively to this domain
     query = (
         Post.select()
-        .where(
-            (Post.domain_label == domain) | (Post.domain_label == "both")
-        )
+        .where(Post.domain_label == domain)
         .order_by(Post.feed_score.desc(), Post.created_at.desc())
         .limit(MAX_FEED_POSTS)
     )
