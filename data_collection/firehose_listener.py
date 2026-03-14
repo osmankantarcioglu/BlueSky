@@ -5,9 +5,8 @@ The firehose streams ALL public Bluesky events in real time (~200-500/sec).
 Most are irrelevant — we filter fast-to-slow before hitting the NLP pipeline:
 
   1. Event type == 'app.bsky.feed.post' (post creation only)
-  2. Author DID in seed_dids set          (O(1) lookup)
-  3. Turkish keyword present in text      (regex, very fast)
-  4. NLP pipeline                         (slow, only for candidates above)
+  2. Author DID in seed_dids set OR domain keyword in text  (O(1) + O(k))
+  3. NLP pipeline: centroid similarity >= threshold         (slow, no keyword fallback)
 """
 import os, sys
 # Ensure project root is on the path regardless of working directory
@@ -118,6 +117,9 @@ class FirehoseProcessor:
                 is_seed = author_did in self.seed_dids
                 has_keyword = self._has_relevant_keyword(text)
 
+                # Pass seed users always; others only if they contain a domain keyword.
+                # The NLP classifier (centroid similarity, no keyword fallback) is the
+                # final quality gate — keyword matches alone do not guarantee saving.
                 if is_seed or has_keyword:
                     self.post_queue.append({
                         'uri': uri,

@@ -232,15 +232,6 @@ class DomainClassifier:
             # Always pick the single highest-scoring domain — never return 'both'
             best_domain, best_score = max(above.items(), key=lambda x: x[1])
             return best_domain, best_score
-        else:
-            # Fallback: keyword matching
-            text_lower = text.lower()
-            has_politics = any(kw in text_lower for kw in POLITICS_KEYWORDS)
-            has_science = any(kw in text_lower for kw in SCIENCE_KEYWORDS)
 
-            if has_politics and not has_science:
-                return 'politics', scores.get('politics', 0.0)
-            elif has_science and not has_politics:
-                return 'science', scores.get('science', 0.0)
-            else:
-                return 'other', 0.0
+        # No domain exceeded the similarity threshold — discard post
+        return 'other', 0.0
