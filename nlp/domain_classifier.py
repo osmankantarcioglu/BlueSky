@@ -173,6 +173,8 @@ class DomainClassifier:
         })
 
     def save_centroids(self, path: str = "data/centroids.npy") -> None:
+        import os
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         np.save(path, self.centroids)
         print(f"Centroids saved: {path}")
 

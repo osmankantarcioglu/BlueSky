@@ -264,6 +264,8 @@ class StanceDetectorV1:
             return 'neutral', 0.3
 
     def save(self, path: str = "data/stance_centroids.npy") -> None:
+        import os
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         np.save(path, self.stance_centroids)
         print(f"Stance centroids saved: {path}")
 
