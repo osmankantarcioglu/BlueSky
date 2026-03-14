@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies for psycopg2 and torch
+RUN apt-get update && apt-get install -y gcc libpq-dev && rm -rf /var/lib/apt/lists/*
+
+# Install CPU-only torch first (much smaller than GPU build)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining ML dependencies
+COPY requirements-nlp.txt .
+RUN pip install --no-cache-dir -r requirements-nlp.txt
+
+# Copy project source
+COPY . .
+
+# HuggingFace model cache lives in /hf_cache (mount a Railway volume here)
+ENV HF_HOME=/hf_cache
+ENV TRANSFORMERS_CACHE=/hf_cache
+
+CMD ["python", "data_collection/firehose_listener.py"]
