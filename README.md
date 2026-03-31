@@ -868,6 +868,13 @@ Mount a Railway Volume at `/hf_cache` and set `HF_HOME=/hf_cache` in worker env 
 Feed server: `https://web-production-77bc8f.up.railway.app`
 
 ---
+## Team
+Osman Kantarcıoğlu
+Selman Yılmaz
+Berke Bölükkaya
+Barış Güzeltaş
+Batuhan 
+Talha Dönderici
 
 ## Tech Stack
 
@@ -884,3 +891,7 @@ Feed server: `https://web-production-77bc8f.up.railway.app`
 | Deployment | Railway (web + worker services) |
 | Container | Docker (worker only) |
 | Language | Python 3.11 |
+
+
+
+$#
