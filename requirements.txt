@@ -1,7 +1,8 @@
-# Feed server dependencies (used by Railway deployment)
+# Feed server + admin dependencies (Railway web service)
 atproto==0.0.55
 flask
 waitress
 peewee
 python-dotenv
 psycopg2-binary
+openai>=1.30.0

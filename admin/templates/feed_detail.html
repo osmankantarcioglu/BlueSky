@@ -1,0 +1,172 @@
+{% extends "layout.html" %}
+{% block title %}{{ feed.display_name }} — BlueSky Feed Studio{% endblock %}
+
+{% block content %}
+<div id="app">
+
+  <!-- Hero -->
+  <div class="glass hero-card mb-4">
+    <div class="hero-glow"></div>
+    <div class="hero-inner">
+      <div class="hero-left">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="badge {% if feed.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+            {% if feed.is_active %}● Aktif{% else %}○ Pasif{% endif %}
+          </span>
+          <span class="badge badge-lang">{{ feed.language }}</span>
+          <span class="badge badge-model">{{ feed.embedding_model }}</span>
+          {% if feed.centroid %}
+          <span class="badge" style="background:rgba(99,102,241,.15);color:var(--primary-l);border:1px solid rgba(99,102,241,.3);">⬡ Centroid ✓</span>
+          {% else %}
+          <span class="badge" style="background:rgba(245,158,11,.1);color:#fcd34d;border:1px solid rgba(245,158,11,.2);">⬡ Centroid Bekleniyor</span>
+          {% endif %}
+        </div>
+        <h1 class="glow-text hero-title">{{ feed.display_name }}</h1>
+        <p class="hero-sub">{{ feed.description or feed.topic }}</p>
+        {% if feed.at_uri %}
+        <p class="mono mt-2" style="font-size:11px;color:var(--text-3);">{{ feed.at_uri }}</p>
+        {% endif %}
+      </div>
+      <div class="hero-actions">
+        <form method="POST" action="{{ url_for('admin.feed_toggle', feed_id=feed.id) }}" style="display:inline;">
+          <button class="btn {% if feed.is_active %}btn-danger{% else %}btn-success{% endif %}">
+            {% if feed.is_active %}⏸ Duraklat{% else %}▶ Aktifleştir{% endif %}
+          </button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.feed_rebuild', feed_id=feed.id) }}"
+              onsubmit="return confirm('Centroid yeniden oluşturulsun mu? Bu birkaç dakika sürebilir.')"
+              style="display:inline;">
+          <button class="btn btn-ghost">🔄 Centroid Yenile</button>
+        </form>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-ghost">← Dashboard</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats row -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;">
+    <div class="glass" style="padding:16px 18px; position:relative; overflow:hidden;">
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Feed ID</div>
+      <div class="mono" style="font-size:13px;color:var(--primary-l);">{{ feed.feed_id }}</div>
+    </div>
+    <div class="glass" style="padding:16px 18px;">
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Eşik</div>
+      <div style="font-size:22px;font-weight:700;color:#67e8f9;">{{ feed.similarity_threshold }}</div>
+    </div>
+    <div class="glass" style="padding:16px 18px;">
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Keyword</div>
+      <div style="font-size:22px;font-weight:700;color:var(--primary-l);">{{ feed.get_keywords()|length }}</div>
+    </div>
+    <div class="glass" style="padding:16px 18px;">
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Seed Cümle</div>
+      <div style="font-size:22px;font-weight:700;color:#6ee7b7;">{{ feed.get_seed_sentences()|length }}</div>
+    </div>
+  </div>
+
+  <!-- Keywords + Sentences -->
+  <div class="grid-2 mb-4">
+    <!-- Keywords -->
+    <div class="glass" style="padding:22px;">
+      <div class="flex items-center justify-between mb-3">
+        <span style="font-size:14px;font-weight:700;">🗝 Keyword Bulutu</span>
+        <span class="badge badge-model">{{ feed.get_keywords()|length }} adet</span>
+      </div>
+      <div class="keyword-cloud">
+        {% for kw in feed.get_keywords() %}
+        <span class="kw-tag" style="animation-delay: {{ loop.index0 * 0.015 }}s;">{{ kw }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Seed sentences -->
+    <div class="glass" style="padding:22px;">
+      <div class="flex items-center justify-between mb-3">
+        <span style="font-size:14px;font-weight:700;">💬 Seed Cümleleri</span>
+        <span class="badge badge-active">{{ feed.get_seed_sentences()|length }} adet</span>
+      </div>
+      <div class="scroll-box" style="max-height:280px;">
+        {% for s in feed.get_seed_sentences() %}
+        <div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,.04); font-size:12px; color:var(--text-2); line-height:1.5;">
+          <span style="color:var(--text-3);margin-right:6px; font-size:10px;">{{ '%02d'|format(loop.index) }}.</span>{{ s }}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent posts table -->
+  <div class="glass" style="padding:0; overflow:hidden;">
+    <div class="flex items-center justify-between" style="padding:18px 22px; border-bottom:1px solid var(--border);">
+      <span style="font-size:14px;font-weight:700;">📝 Son Postlar</span>
+      <span class="badge badge-lang">{{ posts|list|length }} kayıt</span>
+    </div>
+
+    {% set posts_list = posts|list %}
+    {% if not posts_list %}
+    <div style="padding:48px; text-align:center; color:var(--text-3);">
+      <div style="font-size:36px;margin-bottom:10px;opacity:.3;">📭</div>
+      <p>Bu feed'e henüz post atanmamış.<br>Worker çalışmaya başlayınca postlar burada görünecek.</p>
+    </div>
+    {% else %}
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Yazar</th>
+            <th style="min-width:300px;">İçerik</th>
+            <th>Skor</th>
+            <th>Tarih</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for post in posts_list %}
+          <tr>
+            <td>
+              <span class="mono" style="color:var(--primary-l);font-size:11.5px;">
+                {{ post.author_handle or post.author_did[:14] }}
+              </span>
+            </td>
+            <td style="max-width:380px;">
+              <div style="font-size:12.5px;line-height:1.5;color:var(--text-2);">
+                {{ post.text[:120] }}{% if post.text|length > 120 %}<span style="color:var(--text-3);">…</span>{% endif %}
+              </div>
+            </td>
+            <td style="min-width:90px;">
+              <div style="font-size:12px;font-weight:600;color:var(--primary-l);margin-bottom:3px;">
+                {{ "%.3f"|format(post.domain_score or 0) }}
+              </div>
+              <div class="score-bar">
+                <div class="score-fill" style="width:{{ ((post.domain_score or 0) * 100)|int }}%"></div>
+              </div>
+            </td>
+            <td style="white-space:nowrap;">
+              <span style="font-size:11.5px;color:var(--text-3);">
+                {{ post.created_at.strftime('%d %b %H:%M') if post.created_at }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<style>
+  /* Hero */
+  .hero-card { position: relative; overflow: hidden; }
+  .hero-glow { position: absolute; top: -60px; right: -60px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(99,102,241,.25), transparent 70%); pointer-events: none; }
+  .hero-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 28px; flex-wrap: wrap; }
+  .hero-left { flex: 1; min-width: 260px; }
+  .hero-title { font-size: 28px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 6px; }
+  .hero-sub { font-size: 14px; color: var(--text-2); line-height: 1.5; }
+  .hero-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+
+  /* Keyword cloud */
+  .keyword-cloud { line-height: 2; max-height: 280px; overflow-y: auto; }
+  .keyword-cloud::-webkit-scrollbar { width: 4px; }
+  .keyword-cloud::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+</style>
+{% endblock %}

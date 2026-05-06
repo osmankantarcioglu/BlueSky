@@ -19,10 +19,20 @@ FEED_URI_SCIENCE = os.getenv(
     f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-bilim"
 )
 
-# Model identifiers
-BERTURK_MODEL = "dbmdz/bert-base-turkish-cased"
-EMBEDDING_MODEL = "emrecan/bert-base-turkish-cased-mean-nli-stsb-tr"
-EMBEDDING_DIM = 768
+# LLM API keys (used by admin panel for seed generation)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # 'anthropic' | 'openai'
+
+# Embedding models per language/use-case
+EMBEDDING_MODELS = {
+    "berturk":      "emrecan/bert-base-turkish-cased-mean-nli-stsb-tr",
+    "minilm":       "sentence-transformers/all-MiniLM-L6-v2",
+    "multilingual": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+}
+EMBEDDING_MODEL = EMBEDDING_MODELS["berturk"]   # backward compat alias
+BERTURK_MODEL   = "dbmdz/bert-base-turkish-cased"
+EMBEDDING_DIM   = 768
 
 # Database
 DATABASE_PATH = os.getenv("DATABASE_PATH", "data/feeds.db")

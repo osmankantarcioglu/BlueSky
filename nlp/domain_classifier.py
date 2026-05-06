@@ -1,5 +1,11 @@
 """
-Cosine similarity-based domain classification.
+Cosine similarity-based domain & feed classification.
+
+Two classes are provided:
+  DomainClassifier  — legacy, two-domain (politics/science) classifier used
+                      for the hardcoded default feeds and centroid building.
+  FeedClassifier    — dynamic multi-feed classifier that reads centroids from
+                      Feed DB records and delegates embeddings to ModelManager.
 Each post is classified by its distance to pre-computed domain centroids
 (average embedding vectors for 'politics' and 'science').
 
@@ -221,3 +227,157 @@ class DomainClassifier:
 
         # No domain exceeded the similarity threshold — discard post
         return 'other', 0.0
+
+    # --- helpers used by setup_default_feeds ---
+
+    @staticmethod
+    def get_politics_sentences() -> list:
+        """Return the same seed sentences used in build_centroids_from_keywords."""
+        return [
+            "Erdoğan bugün TBMM'de konuştu, muhalefet sert tepki verdi",
+            "CHP'nin açıklaması gündem oldu",
+            "AKP-MHP ittifakı çatladı mı?",
+            "Yeni anayasa tartışması yeniden başladı",
+            "Seçim ne zaman? Herkes merak ediyor",
+            "Belediye başkanı görevden alındı, kayyum atandı",
+            "Meclis bugün oyladı, kanun geçti",
+            "Bakan istifa etti",
+            "Muhalefet mitinge çıktı, katılım büyük",
+            "Sandıkta ne olacak? Anketler çelişiyor",
+            "Bu seçim sonuçları çok şaşırttı beni",
+            "İmamoğlu davasını yakından takip ediyorum",
+            "Siyasi gerilim had safhada şu an",
+            "Hükümetin bu kararına gerçekten şaşırdım",
+            "Muhalefet bir türlü birleşemiyor, üzücü",
+            "AKP'nin oy oranı düşüyor mu yoksa?",
+            "Kılıçdaroğlu ne dedi bugün?",
+            "Bahçeli'nin açıklaması dikkat çekiciydi",
+            "Özgür Özel TBMM'de sert konuştu",
+            "Demirtaş cezaevinden açıklama yaptı",
+            "TBMM'de bütçe görüşmeleri sürüyor",
+            "Yeni vergi paketi meclise sunuldu",
+            "Anayasa mahkemesi kararı bekleniyor",
+            "Dışişleri bakanı NATO zirvesine katıldı",
+            "Yerel seçimler için adaylar açıklanıyor",
+            "Koalisyon müzakereleri tıkandı",
+            "Erken seçim senaryoları konuşuluyor",
+            "Siyasi kriz derinleşiyor",
+            "Belediye ihalelerinde yolsuzluk iddiası",
+            "Referandum tartışması yeniden gündemde",
+            "#seçim2024 sonuçları açıklandı",
+            "#TBMM gündeminde neler var bugün",
+            "Türk siyasetinde yeni bir dönem mi başlıyor",
+            "Hükümet ekonomi paketini açıkladı, piyasalar karışık",
+            "Muhalefet partileri ortak bildiri yayınladı",
+            "Cumhurbaşkanı: 'Seçim zamanında yapılacak'",
+            "Milletvekili dokunulmazlıkları tekrar gündemde",
+            "Siyasi gerilim tırmanıyor, çözüm nerede?",
+            "Parti içi muhalefet güçleniyor",
+            "Türkiye-AB ilişkileri yeniden nasıl şekillenecek",
+            "bu siyasetçiler hiç değişmiyor ya",
+            "yine aynı söylemler, farklı yüzler",
+            "seçmenin sesini kim dinleyecek",
+            "iktidar muhalefet kavgası bıktırdı",
+            "sandık her şeyi çözer diyenler haklı mı",
+        ]
+
+    @staticmethod
+    def get_science_sentences() -> list:
+        return [
+            "Yeni makalemiz arXiv'e yüklendi, link biyoda",
+            "Nature'da yayınlanan çalışmamız çok ilgi gördü",
+            "Doktora savunmam geçti! Çok mutluyum",
+            "Konferansta posterimizi sunduk, güzel geri dönüşler aldık",
+            "Veri setimizi açık kaynak olarak paylaşıyoruz",
+            "Makine öğrenmesi modelimiz yüzde 94 doğruluk verdi",
+            "Yeni paper yayınlandı, abstract thread'de",
+            "Hakemler makalemi kabul etti nihayet!",
+            "Laboratuvarda ilginç sonuçlar çıktı bugün",
+            "Tezimin son bölümünü yazıyorum, bitiyorum artık",
+            "Bu çalışma derin öğrenme alanında çığır açıyor",
+            "CERN'den yeni bulgular geldi, fiziği değiştirebilir",
+            "Türk araştırmacılar Science'da yayın yaptı, gurur verici",
+            "İklim değişikliği verilerini analiz ettik, tablo kötü",
+            "COVID varyantları üzerine yeni analiz yayınlandı",
+            "Yapay zeka artık protein yapısını tahmin edebiliyor",
+            "Kuantum hesaplama bir adım daha ilerledi",
+            "Bu algoritma klasik yöntemden 10x daha hızlı",
+            "Biyoteknoloji harika şeyler yapıyor son dönemde",
+            "Uzay teleskobundan inanılmaz görüntüler geldi",
+            "NLP modelimizi Türkçe üzerine fine-tune ettik",
+            "Peer review süreci çok uzadı, 8 ay oldu",
+            "Konferans bildiri kabul oranı %18, çok zor",
+            "Açık erişim bilimin geleceği, keşke herkes benimsese",
+            "Veri analizinde yeni bir yöntem kullandık, çok işe yaradı",
+            "Araştırma grubumuz 3 yeni üye aldı bu dönem",
+            "Meta-analiz sonuçları ilginç çıktı, beklenmedik",
+            "Simülasyon modeli gerçek verilerle örtüştü",
+            "Hipotezimiz doğrulandı, şimdi makale yazıyoruz",
+            "İstatistiksel analizde p<0.001 çıktı, güçlü bulgu",
+            "#YapayZeka son gelişmeler hakkında bir thread",
+            "#bilim insanları bu yıl çok önemli keşifler yaptı",
+            "Makale özeti: yeni bir derin öğrenme yaklaşımı",
+            "Araştırma sorusu: dil modelleri gerçekten anlıyor mu",
+            "Doktora öğrencileri için veri analizi ipuçları",
+            "Hesaplamalı biyoloji alanında yeni araçlar çıktı",
+            "Fizik deneyi sonuçları standart modeli zorluyor",
+            "Kimya literatüründe yeni bir sentez yöntemi",
+            "Tıp araştırması: ilaç yan etkileri beklentiden az",
+            "Sosyal bilimlerde büyük veri kullanımı artıyor",
+            "bugün lab'da güzel veriler topladık",
+            "makale revizyon geldi, yeniden başlıyorum",
+            "konferans kabul maili geldi, çok sevindim",
+            "veri temizleme işi hiç bitmez ya",
+            "model overfitting yapıyor, başım belada",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# FeedClassifier — dynamic multi-feed, DB-backed
+# ---------------------------------------------------------------------------
+
+class FeedClassifier:
+    """
+    Classifies posts against dynamically loaded Feed DB records.
+
+    One instance is created per Feed in MultiPipeline and is replaced
+    whenever the feed's centroid changes (detected via polling).
+
+    Usage:
+        from nlp.model_manager import ModelManager
+        embedder = ModelManager.get_embedder('berturk')
+        fc = FeedClassifier(feed_record, embedder)
+        score, matched = fc.classify(text)
+    """
+
+    def __init__(self, feed, embedder):
+        """
+        Args:
+            feed:     Feed ORM record (must have centroid populated)
+            embedder: TurkishEmbedder instance for the correct model type
+        """
+        self.feed_id = feed.id
+        self.threshold = feed.similarity_threshold
+        self.centroid = feed.get_centroid()
+        self.embedder = embedder
+
+    def classify(self, text: str, embedding=None) -> tuple[float, bool]:
+        """
+        Returns (cosine_score, is_match).
+
+        Embedding is computed here if not supplied (avoids double-work when
+        the caller has already embedded the text for another classifier).
+        """
+        if self.centroid is None:
+            return 0.0, False
+
+        if embedding is None:
+            embedding = self.embedder.embed(text)
+
+        score = float(
+            cosine_similarity(
+                embedding.reshape(1, -1),
+                self.centroid.reshape(1, -1),
+            )[0][0]
+        )
+        return score, score >= self.threshold

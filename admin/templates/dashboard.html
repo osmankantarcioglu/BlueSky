@@ -1,0 +1,146 @@
+{% extends "layout.html" %}
+{% block title %}Dashboard — BlueSky Feed Studio{% endblock %}
+
+{% block content %}
+<div id="app">
+
+  <!-- Page header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title glow-text">Feed Dashboard</h1>
+      <p class="page-sub">Tüm aktif ve pasif feedleri buradan yönetebilirsiniz.</p>
+    </div>
+    <a href="{{ url_for('admin.feed_new') }}" class="btn btn-primary">
+      <span>✦</span> Yeni Feed Oluştur
+    </a>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="grid-3 mb-4" style="grid-template-columns: repeat(3,1fr);">
+    <div class="glass stat-card" style="--c1: rgba(99,102,241,.15); --c2: rgba(139,92,246,.05);">
+      <div class="stat-value glow-text" id="cnt-feeds">{{ feeds|length }}</div>
+      <div class="stat-label">Toplam Feed</div>
+      <div class="stat-icon">⚡</div>
+    </div>
+    <div class="glass stat-card" style="--c1: rgba(16,185,129,.1); --c2: rgba(6,182,212,.05);">
+      <div class="stat-value" style="color:#6ee7b7;" id="cnt-active">{{ feeds|selectattr('is_active')|list|length }}</div>
+      <div class="stat-label">Aktif Feed</div>
+      <div class="stat-icon">✅</div>
+    </div>
+    <div class="glass stat-card" style="--c1: rgba(6,182,212,.1); --c2: rgba(99,102,241,.05);">
+      <div class="stat-value" style="color:#67e8f9;" id="cnt-posts">
+        {% set total = namespace(n=0) %}
+        {% for f in feeds %}{% set total.n = total.n + stats[f.id]['post_count'] %}{% endfor %}
+        {{ total.n }}
+      </div>
+      <div class="stat-label">Toplam Post</div>
+      <div class="stat-icon">📝</div>
+    </div>
+  </div>
+
+  <!-- Feed grid -->
+  {% if not feeds %}
+  <div class="glass" style="padding:60px; text-align:center;">
+    <div style="font-size:52px; margin-bottom:16px; opacity:.4;">🦋</div>
+    <h3 style="color:var(--text-2); font-weight:500; margin-bottom:8px;">Henüz feed yok</h3>
+    <p style="color:var(--text-3); font-size:14px; margin-bottom:24px;">İlk feed'ini oluştur ve Bluesky'da yayınla.</p>
+    <a href="{{ url_for('admin.feed_new') }}" class="btn btn-primary">✦ İlk Feed'i Oluştur</a>
+  </div>
+
+  {% else %}
+  <div class="grid-auto">
+    {% for feed in feeds %}
+    <div class="feed-card glass" data-active="{{ feed.is_active|lower }}"
+         onclick="location.href='{{ url_for('admin.feed_detail', feed_id=feed.id) }}'">
+      <!-- Glow accent -->
+      <div class="card-accent"></div>
+
+      <div class="card-inner">
+        <div class="flex items-center justify-between mb-2">
+          <span class="badge {% if feed.is_active %}badge-active{% else %}badge-inactive{% endif %}">
+            {% if feed.is_active %}● Aktif{% else %}○ Pasif{% endif %}
+          </span>
+          <div class="flex gap-2">
+            <span class="badge badge-lang">{{ feed.language }}</span>
+            <span class="badge badge-model">{{ feed.embedding_model }}</span>
+          </div>
+        </div>
+
+        <h3 class="card-title">{{ feed.display_name }}</h3>
+        <p class="card-desc">{{ (feed.description or feed.topic)[:80] }}{% if (feed.description or feed.topic)|length > 80 %}…{% endif %}</p>
+
+        <div class="card-stats">
+          <div class="cstat">
+            <span class="cstat-val">{{ stats[feed.id]['post_count'] }}</span>
+            <span class="cstat-lbl">post</span>
+          </div>
+          <div class="cstat-sep"></div>
+          <div class="cstat">
+            <span class="cstat-val">{{ feed.get_keywords()|length }}</span>
+            <span class="cstat-lbl">keyword</span>
+          </div>
+          <div class="cstat-sep"></div>
+          <div class="cstat">
+            <span class="cstat-val">{{ feed.similarity_threshold }}</span>
+            <span class="cstat-lbl">eşik</span>
+          </div>
+        </div>
+
+        {% if feed.centroid %}
+        <div class="centroid-pill">⬡ Centroid mevcut</div>
+        {% else %}
+        <div class="centroid-pill missing">⬡ Centroid bekleniyor</div>
+        {% endif %}
+
+        {% if feed.at_uri %}
+        <p class="mono mt-2" style="color:var(--text-3);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ feed.at_uri }}">
+          {{ feed.at_uri }}
+        </p>
+        {% endif %}
+      </div>
+
+      <div class="card-footer-bar">
+        <span style="font-size:11.5px; color:var(--text-3);">
+          {{ feed.created_at.strftime('%d %b %Y') if feed.created_at }}
+        </span>
+        <span style="font-size:12px; color:var(--primary-l);">Detay →</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</div>
+
+<style>
+  .feed-card {
+    cursor: pointer;
+    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .feed-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(99,102,241,.2), 0 0 0 1px rgba(99,102,241,.3);
+  }
+  .feed-card[data-active="false"] { opacity: .65; }
+  .card-accent {
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--violet), var(--cyan));
+    opacity: 0; transition: opacity .2s;
+  }
+  .feed-card:hover .card-accent { opacity: 1; }
+  .card-inner { padding: 20px 20px 0; flex: 1; }
+  .card-title { font-size: 16px; font-weight: 700; margin: 8px 0 4px; }
+  .card-desc  { font-size: 12.5px; color: var(--text-2); line-height: 1.5; margin-bottom: 14px; min-height: 38px; }
+  .card-stats { display: flex; align-items: center; gap: 0; margin-bottom: 12px; }
+  .cstat { text-align: center; flex: 1; }
+  .cstat-val { display: block; font-size: 18px; font-weight: 700; }
+  .cstat-lbl { display: block; font-size: 10.5px; color: var(--text-3); }
+  .cstat-sep { width: 1px; height: 30px; background: var(--border); }
+  .centroid-pill { display: inline-block; font-size: 10.5px; padding: 3px 9px; border-radius: 20px; background: rgba(16,185,129,.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,.2); margin-bottom: 6px; }
+  .centroid-pill.missing { background: rgba(245,158,11,.08); color: #fcd34d; border-color: rgba(245,158,11,.2); }
+  .card-footer-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border); margin-top: 12px; }
+</style>
+{% endblock %}
