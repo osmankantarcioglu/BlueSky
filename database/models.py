@@ -172,25 +172,32 @@ ALL_TABLES = [Feed, TrackedUser, FeedSeedUser, Post, LikeEvent]
 
 
 def create_tables() -> None:
-    """Create all tables (IF NOT EXISTS). Safe to call on every boot."""
-    with db:
-        for model in ALL_TABLES:
-            try:
+    """
+    Create all tables independently. Each model gets its own savepoint so a
+    failure on one table (e.g. posts FK index on missing feed_id column) does
+    NOT abort the whole PostgreSQL transaction and block later tables.
+    """
+    if db.is_closed():
+        db.connect(reuse_if_open=True)
+
+    for model in ALL_TABLES:
+        try:
+            with db.atomic():
                 model.create_table(safe=True)
-            except Exception as exc:
-                # Log but continue — existing tables with different schemas
-                # are handled by _run_migrations() below.
-                print(f"create_table note ({model._meta.table_name}): {exc}")
+        except Exception as exc:
+            print(f"create_table note ({model._meta.table_name}): {exc}")
+
     _run_migrations()
     print("DB tables ready.")
 
 
 def _run_migrations() -> None:
-    """Incremental schema changes that CREATE TABLE IF NOT EXISTS cannot apply."""
+    """Incremental schema changes applied after table creation."""
 
     def _sql(statement: str) -> None:
         try:
-            db.execute_sql(statement)
+            with db.atomic():
+                db.execute_sql(statement)
         except Exception as exc:
             print(f"Migration skipped: {exc}")
 
@@ -199,13 +206,11 @@ def _run_migrations() -> None:
         if 'feed_id' not in cols:
             _sql("ALTER TABLE posts ADD COLUMN feed_id INTEGER REFERENCES feeds(id)")
             print("Migration applied: posts.feed_id (SQLite)")
-
         _sql(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_feedseeduser_uniq "
             "ON feed_seed_users(feed_id, user_did)"
         )
     else:
-        # PostgreSQL — supports IF NOT EXISTS / IF NOT EXISTS for index
         _sql(
             "ALTER TABLE posts ADD COLUMN IF NOT EXISTS "
             "feed_id INTEGER REFERENCES feeds(id) ON DELETE SET NULL"
