@@ -170,6 +170,27 @@ def feed_rebuild(feed_id: int):
 
 
 # ---------------------------------------------------------------------------
+# Publish feed to Bluesky (retry / first-time)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/feeds/<int:feed_id>/publish", methods=["POST"])
+def feed_publish(feed_id: int):
+    feed = Feed.get_or_none(Feed.id == feed_id)
+    if not feed:
+        abort(404)
+    try:
+        from admin.services import _publish_bluesky
+        at_uri = _publish_bluesky(feed.feed_id, feed.display_name, feed.description or feed.topic)
+        feed.at_uri = at_uri
+        feed.rkey   = feed.feed_id
+        feed.touch()
+        flash(f"Published to Bluesky! AT URI: {at_uri}", "success")
+    except Exception as exc:
+        flash(f"Bluesky publish failed: {exc}", "danger")
+    return redirect(url_for("admin.feed_detail", feed_id=feed_id))
+
+
+# ---------------------------------------------------------------------------
 # Delete feed
 # ---------------------------------------------------------------------------
 

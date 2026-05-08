@@ -39,6 +39,13 @@
               style="display:inline;">
           <button class="btn btn-ghost">🔄 Rebuild Centroid</button>
         </form>
+        {% if not feed.at_uri %}
+        <form method="POST" action="{{ url_for('admin.feed_publish', feed_id=feed.id) }}" style="display:inline;">
+          <button class="btn" style="background:rgba(6,182,212,.15);color:#67e8f9;border:1px solid rgba(6,182,212,.3);">
+            🦋 Publish to Bluesky
+          </button>
+        </form>
+        {% endif %}
         <button class="btn" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);"
                 @click="showDeleteModal=true">
           🗑 Delete Feed
