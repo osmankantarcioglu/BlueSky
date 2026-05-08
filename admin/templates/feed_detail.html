@@ -27,10 +27,10 @@
         <p class="mono mt-2" style="font-size:11px;color:var(--text-3);">{{ feed.at_uri }}</p>
         {% endif %}
       </div>
-      <div class="hero-actions">
+      <div class="hero-actions" id="detail-actions">
         <form method="POST" action="{{ url_for('admin.feed_toggle', feed_id=feed.id) }}" style="display:inline;">
           <button class="btn {% if feed.is_active %}btn-danger{% else %}btn-success{% endif %}">
-            {% if feed.is_active %}⏸ Duraklat{% else %}▶ Aktifleştir{% endif %}
+            {% if feed.is_active %}⏸ Durdur{% else %}▶ Başlat{% endif %}
           </button>
         </form>
         <form method="POST" action="{{ url_for('admin.feed_rebuild', feed_id=feed.id) }}"
@@ -38,8 +38,37 @@
               style="display:inline;">
           <button class="btn btn-ghost">🔄 Centroid Yenile</button>
         </form>
+        <button class="btn" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);"
+                @click="showDeleteModal=true">
+          🗑 Feed'i Sil
+        </button>
         <a href="{{ url_for('admin.dashboard') }}" class="btn btn-ghost">← Dashboard</a>
       </div>
+
+      <!-- Delete modal -->
+      <transition name="modal-fade">
+        <div v-if="showDeleteModal" class="modal-backdrop" @click.self="showDeleteModal=false">
+          <div class="modal-box">
+            <div class="modal-icon">🗑</div>
+            <h3 class="modal-title">Feed'i Kalıcı Sil</h3>
+            <p class="modal-body">
+              <strong style="color:var(--text);">{{ feed.display_name }}</strong> feed'ini silmek istediğine emin misin?
+              <span style="color:var(--text-3);font-size:12px;margin-top:6px;display:block;">
+                Bu feed'e bağlı postların referansı kaldırılacak. Bu işlem geri alınamaz.
+              </span>
+            </p>
+            <div class="modal-actions">
+              <button class="btn btn-ghost" @click="showDeleteModal=false">İptal</button>
+              <form action="{{ url_for('admin.feed_delete', feed_id=feed.id) }}" method="POST" style="display:contents;">
+                <button type="submit" class="btn"
+                        style="background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.4);">
+                  Evet, Kalıcı Sil
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
   </div>
 
@@ -155,8 +184,18 @@
 </div>
 
 <style>
+  /* Modal */
+  .modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px; }
+  .modal-box { background:#0f0d1f;border:1px solid rgba(239,68,68,.3);border-radius:18px;padding:36px;max-width:420px;width:100%;box-shadow:0 0 60px rgba(239,68,68,.15),0 20px 60px rgba(0,0,0,.6);text-align:center; }
+  .modal-icon  { font-size:40px;margin-bottom:14px; }
+  .modal-title { font-size:20px;font-weight:700;margin-bottom:12px; }
+  .modal-body  { font-size:14px;color:var(--text-2);line-height:1.6;margin-bottom:24px; }
+  .modal-actions { display:flex;gap:10px;justify-content:center; }
+  .modal-fade-enter-active,.modal-fade-leave-active { transition:opacity .2s ease,transform .2s ease; }
+  .modal-fade-enter-from,.modal-fade-leave-to { opacity:0;transform:scale(.95); }
+
   /* Hero */
-  .hero-card { position: relative; overflow: hidden; }
+  .hero-card { position: relative; overflow: visible; }
   .hero-glow { position: absolute; top: -60px; right: -60px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(99,102,241,.25), transparent 70%); pointer-events: none; }
   .hero-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 28px; flex-wrap: wrap; }
   .hero-left { flex: 1; min-width: 260px; }
@@ -169,4 +208,14 @@
   .keyword-cloud::-webkit-scrollbar { width: 4px; }
   .keyword-cloud::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const { createApp } = Vue;
+createApp({
+  delimiters: ['[[', ']]'],
+  data() { return { showDeleteModal: false }; }
+}).mount('#app');
+</script>
 {% endblock %}

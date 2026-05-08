@@ -167,3 +167,20 @@ def feed_rebuild(feed_id: int):
     except Exception as exc:
         flash(f"Centroid oluşturma hatası: {exc}", "danger")
     return redirect(url_for("admin.feed_detail", feed_id=feed_id))
+
+
+# ---------------------------------------------------------------------------
+# Delete feed
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/feeds/<int:feed_id>/delete", methods=["POST"])
+def feed_delete(feed_id: int):
+    feed = Feed.get_or_none(Feed.id == feed_id)
+    if not feed:
+        abort(404)
+    name = feed.display_name
+    # Detach posts (feed_id → NULL) then delete the feed record
+    Post.update(feed=None).where(Post.feed_id == feed_id).execute()
+    feed.delete_instance()
+    flash(f"'{name}' feed'i kalıcı olarak silindi.", "danger")
+    return redirect(url_for("admin.dashboard"))
