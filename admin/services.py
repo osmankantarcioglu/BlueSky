@@ -17,13 +17,16 @@ from database.models import Feed
 from services.llm_seed_generator import generate_seeds
 
 
+RKEY_MAX_LEN = 15  # Bluesky AT Protocol hard limit
+
+
 def slugify(text: str) -> str:
-    """Convert a topic string to a URL-safe feed_id."""
+    """Convert a topic string to a URL-safe feed_id (max 15 chars for Bluesky rkey)."""
     text = text.lower().strip()
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"[\s_]+", "-", text)
     text = re.sub(r"-+", "-", text)
-    return text[:64].strip("-")
+    return text[:RKEY_MAX_LEN].strip("-")
 
 
 def create_feed(
@@ -45,6 +48,11 @@ def create_feed(
     If keywords/seed_sentences are omitted, they are generated via LLM.
     Centroid is always computed here (requires NLP models — worker only).
     """
+    if len(feed_id) > RKEY_MAX_LEN:
+        raise ValueError(
+            f"feed_id '{feed_id}' is {len(feed_id)} characters — "
+            f"Bluesky rkey limit is {RKEY_MAX_LEN}."
+        )
     if Feed.get_or_none(Feed.feed_id == feed_id):
         raise ValueError(f"Feed with id '{feed_id}' already exists")
 

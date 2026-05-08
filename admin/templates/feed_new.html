@@ -121,11 +121,17 @@
 
           <div class="grid-2 mb-3">
             <div class="field-group">
-              <label class="field-label">Feed ID (slug) *</label>
+              <label class="field-label" style="display:flex;justify-content:space-between;">
+                Feed ID (slug) *
+                <span :style="{color: feedId.length > 15 ? 'var(--red)' : feedId.length > 12 ? '#fcd34d' : 'var(--text-3)'}">
+                  [[ feedId.length ]]/15
+                </span>
+              </label>
               <input type="text" name="feed_id" v-model="feedId"
-                     class="field-input mono" placeholder="world-cup-2026"
-                     required pattern="[a-z0-9\-]+" />
-              <span class="field-hint">Lowercase letters, numbers and hyphens. Used as Bluesky rkey.</span>
+                     class="field-input mono" placeholder="premier-league"
+                     required pattern="[a-z0-9\-]+" maxlength="15"
+                     :style="{borderColor: feedId.length > 15 ? 'var(--red)' : ''}" />
+              <span class="field-hint">Max 15 chars — Bluesky rkey limit. Lowercase, numbers, hyphens only.</span>
             </div>
             <div class="field-group">
               <label class="field-label">Display Name *</label>
