@@ -4,34 +4,33 @@
 {% block content %}
 <div id="app">
 
-  <!-- Page header -->
   <div class="page-header">
     <div>
       <h1 class="page-title glow-text">Feed Dashboard</h1>
-      <p class="page-sub">Tüm aktif ve pasif feedleri buradan yönetebilirsiniz.</p>
+      <p class="page-sub">Manage all your active and stopped feeds from here.</p>
     </div>
     <a href="{{ url_for('admin.feed_new') }}" class="btn btn-primary">
-      <span>✦</span> Yeni Feed Oluştur
+      <span>✦</span> New Feed
     </a>
   </div>
 
-  <!-- Stats bar -->
+  <!-- Stats -->
   <div class="grid-3 mb-4">
     <div class="glass stat-card" style="--c1:rgba(99,102,241,.15);--c2:rgba(139,92,246,.05);">
       <div class="stat-value glow-text">{{ feeds|length }}</div>
-      <div class="stat-label">Toplam Feed</div>
+      <div class="stat-label">Total Feeds</div>
       <div class="stat-icon">⚡</div>
     </div>
     <div class="glass stat-card" style="--c1:rgba(16,185,129,.1);--c2:rgba(6,182,212,.05);">
       <div class="stat-value" style="color:#6ee7b7;">{{ feeds|selectattr('is_active')|list|length }}</div>
-      <div class="stat-label">Aktif Feed</div>
+      <div class="stat-label">Active Feeds</div>
       <div class="stat-icon">✅</div>
     </div>
     <div class="glass stat-card" style="--c1:rgba(6,182,212,.1);--c2:rgba(99,102,241,.05);">
       {% set total = namespace(n=0) %}
       {% for f in feeds %}{% set total.n = total.n + stats[f.id]['post_count'] %}{% endfor %}
       <div class="stat-value" style="color:#67e8f9;">{{ total.n }}</div>
-      <div class="stat-label">Toplam Post</div>
+      <div class="stat-label">Total Posts</div>
       <div class="stat-icon">📝</div>
     </div>
   </div>
@@ -40,23 +39,21 @@
   {% if not feeds %}
   <div class="glass" style="padding:60px;text-align:center;">
     <div style="font-size:52px;margin-bottom:16px;opacity:.4;">🦋</div>
-    <h3 style="color:var(--text-2);font-weight:500;margin-bottom:8px;">Henüz feed yok</h3>
-    <p style="color:var(--text-3);font-size:14px;margin-bottom:24px;">İlk feed'ini oluştur ve Bluesky'da yayınla.</p>
-    <a href="{{ url_for('admin.feed_new') }}" class="btn btn-primary">✦ İlk Feed'i Oluştur</a>
+    <h3 style="color:var(--text-2);font-weight:500;margin-bottom:8px;">No feeds yet</h3>
+    <p style="color:var(--text-3);font-size:14px;margin-bottom:24px;">Create your first feed and publish it on Bluesky.</p>
+    <a href="{{ url_for('admin.feed_new') }}" class="btn btn-primary">✦ Create First Feed</a>
   </div>
 
   {% else %}
   <div class="grid-auto">
     {% for feed in feeds %}
     <div class="feed-card glass" data-active="{{ feed.is_active|lower }}">
-
       <div class="card-accent"></div>
 
-      <!-- Clickable body -->
       <div class="card-inner" onclick="location.href='{{ url_for('admin.feed_detail', feed_id=feed.id) }}'">
         <div class="flex items-center justify-between mb-2">
-          <span class="badge {% if feed.is_active %}badge-active{% else %}badge-inactive{% endif %}">
-            {% if feed.is_active %}● Aktif{% else %}○ Pasif{% endif %}
+          <span class="badge {% if feed.is_active %}badge-active{% else %}badge-stopped{% endif %}">
+            {% if feed.is_active %}● Active{% else %}■ Stopped{% endif %}
           </span>
           <div class="flex gap-2">
             <span class="badge badge-lang">{{ feed.language }}</span>
@@ -70,47 +67,41 @@
         <div class="card-stats">
           <div class="cstat">
             <span class="cstat-val">{{ stats[feed.id]['post_count'] }}</span>
-            <span class="cstat-lbl">post</span>
+            <span class="cstat-lbl">posts</span>
           </div>
           <div class="cstat-sep"></div>
           <div class="cstat">
             <span class="cstat-val">{{ feed.get_keywords()|length }}</span>
-            <span class="cstat-lbl">keyword</span>
+            <span class="cstat-lbl">keywords</span>
           </div>
           <div class="cstat-sep"></div>
           <div class="cstat">
             <span class="cstat-val">{{ feed.similarity_threshold }}</span>
-            <span class="cstat-lbl">eşik</span>
+            <span class="cstat-lbl">threshold</span>
           </div>
         </div>
 
         {% if feed.centroid %}
-        <div class="centroid-pill">⬡ Centroid mevcut</div>
+        <div class="centroid-pill">⬡ Centroid ready</div>
         {% else %}
-        <div class="centroid-pill missing">⬡ Centroid bekleniyor</div>
+        <div class="centroid-pill missing">⬡ Centroid pending</div>
         {% endif %}
       </div>
 
-      <!-- Action bar (stops card click propagation) -->
+      <!-- Action bar -->
       <div class="card-actions" @click.stop>
-        <!-- Toggle stop/start -->
         <form method="POST" action="{{ url_for('admin.feed_toggle', feed_id=feed.id) }}" style="display:contents;">
           <button class="action-btn {% if feed.is_active %}action-warn{% else %}action-success{% endif %}"
-                  title="{% if feed.is_active %}Durdur{% else %}Başlat{% endif %}">
-            {% if feed.is_active %}⏸{% else %}▶{% endif %}
-            {% if feed.is_active %}Durdur{% else %}Başlat{% endif %}
+                  title="{% if feed.is_active %}Stop{% else %}Start{% endif %}">
+            {% if feed.is_active %}⏸ Stop{% else %}▶ Start{% endif %}
           </button>
         </form>
-
-        <!-- Detail link -->
-        <a href="{{ url_for('admin.feed_detail', feed_id=feed.id) }}" class="action-btn action-ghost" title="Detay">
-          ⚙ Detay
+        <a href="{{ url_for('admin.feed_detail', feed_id=feed.id) }}" class="action-btn action-ghost">
+          ⚙ Details
         </a>
-
-        <!-- Delete -->
-        <button class="action-btn action-danger" title="Sil"
+        <button class="action-btn action-danger"
                 @click="confirmDelete({{ feed.id }}, '{{ feed.display_name|replace("'","\\'")|e }}')">
-          🗑 Sil
+          🗑 Delete
         </button>
       </div>
     </div>
@@ -118,23 +109,25 @@
   </div>
   {% endif %}
 
-  <!-- ── Delete Confirm Modal ── -->
+  <!-- Delete Confirm Modal -->
   <transition name="modal-fade">
     <div v-if="modal.show" class="modal-backdrop" @click.self="modal.show=false">
       <div class="modal-box">
         <div class="modal-icon">🗑</div>
-        <h3 class="modal-title">Feed'i Sil</h3>
+        <h3 class="modal-title">Delete Feed</h3>
         <p class="modal-body">
-          <strong style="color:var(--text);">"[[ modal.name ]]"</strong> feed'ini kalıcı olarak silmek istediğine emin misin?
-          <br><span style="color:var(--text-3);font-size:12px;margin-top:6px;display:block;">
-            Bu feed'e bağlı tüm postların feed referansı kaldırılacak. Bu işlem geri alınamaz.
+          Are you sure you want to permanently delete
+          <strong style="color:var(--text);">"[[ modal.name ]]"</strong>?
+          <span style="color:var(--text-3);font-size:12px;margin-top:6px;display:block;">
+            All posts linked to this feed will lose their feed reference. This action cannot be undone.
           </span>
         </p>
         <div class="modal-actions">
-          <button class="btn btn-ghost" @click="modal.show=false">İptal</button>
+          <button class="btn btn-ghost" @click="modal.show=false">Cancel</button>
           <form :action="'/admin/feeds/'+modal.id+'/delete'" method="POST" style="display:contents;">
-            <button type="submit" class="btn" style="background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.4);">
-              Evet, Kalıcı Sil
+            <button type="submit" class="btn"
+                    style="background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.4);">
+              Yes, Delete
             </button>
           </form>
         </div>
@@ -145,21 +138,12 @@
 </div>
 
 <style>
-  /* Feed card */
-  .feed-card {
-    display: flex; flex-direction: column;
-    transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
-    position: relative; overflow: hidden;
-  }
-  .feed-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 36px rgba(99,102,241,.18), 0 0 0 1px rgba(99,102,241,.25);
-  }
-  .feed-card[data-active="false"] { opacity: .65; }
+  .feed-card { display:flex;flex-direction:column;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;position:relative;overflow:hidden; }
+  .feed-card:hover { transform:translateY(-3px);box-shadow:0 10px 36px rgba(99,102,241,.18),0 0 0 1px rgba(99,102,241,.25); }
+  .feed-card[data-active="false"] { opacity:.65; }
   .card-accent { position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--primary),var(--violet),var(--cyan));opacity:0;transition:opacity .2s; }
   .feed-card:hover .card-accent { opacity:1; }
-
-  .card-inner { padding:20px 20px 14px; flex:1; cursor:pointer; }
+  .card-inner { padding:20px 20px 14px;flex:1;cursor:pointer; }
   .card-title  { font-size:16px;font-weight:700;margin:8px 0 4px; }
   .card-desc   { font-size:12.5px;color:var(--text-2);line-height:1.5;margin-bottom:14px;min-height:38px; }
   .card-stats  { display:flex;align-items:center;margin-bottom:12px; }
@@ -169,20 +153,8 @@
   .cstat-sep   { width:1px;height:30px;background:var(--border); }
   .centroid-pill { display:inline-block;font-size:10.5px;padding:3px 9px;border-radius:20px;background:rgba(16,185,129,.1);color:#6ee7b7;border:1px solid rgba(16,185,129,.2);margin-bottom:4px; }
   .centroid-pill.missing { background:rgba(245,158,11,.08);color:#fcd34d;border-color:rgba(245,158,11,.2); }
-
-  /* Action bar */
-  .card-actions {
-    display: flex; gap: 6px; padding: 10px 14px;
-    border-top: 1px solid var(--border);
-    background: rgba(0,0,0,.15);
-  }
-  .action-btn {
-    flex: 1; padding: 7px 6px; border-radius: 8px;
-    font-size: 11.5px; font-weight: 600; border: 1px solid;
-    cursor: pointer; background: none; text-decoration: none;
-    display: flex; align-items: center; justify-content: center; gap: 4px;
-    transition: all .18s ease; white-space: nowrap;
-  }
+  .card-actions { display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--border);background:rgba(0,0,0,.15); }
+  .action-btn { flex:1;padding:7px 6px;border-radius:8px;font-size:11.5px;font-weight:600;border:1px solid;cursor:pointer;background:none;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:4px;transition:all .18s ease;white-space:nowrap; }
   .action-ghost   { color:var(--text-2);border-color:var(--border); }
   .action-ghost:hover { background:var(--surface2);color:var(--text); }
   .action-warn    { color:#fcd34d;border-color:rgba(245,158,11,.3); }
@@ -192,24 +164,12 @@
   .action-danger  { color:#fca5a5;border-color:rgba(239,68,68,.3); }
   .action-danger:hover { background:rgba(239,68,68,.12); }
 
-  /* Modal */
-  .modal-backdrop {
-    position:fixed;inset:0;background:rgba(0,0,0,.7);
-    backdrop-filter:blur(6px);z-index:1000;
-    display:flex;align-items:center;justify-content:center;padding:20px;
-  }
-  .modal-box {
-    background:#0f0d1f;border:1px solid rgba(239,68,68,.3);
-    border-radius:18px;padding:36px;max-width:420px;width:100%;
-    box-shadow:0 0 60px rgba(239,68,68,.15),0 20px 60px rgba(0,0,0,.6);
-    text-align:center;
-  }
+  .modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px; }
+  .modal-box { background:#0f0d1f;border:1px solid rgba(239,68,68,.3);border-radius:18px;padding:36px;max-width:420px;width:100%;box-shadow:0 0 60px rgba(239,68,68,.15),0 20px 60px rgba(0,0,0,.6);text-align:center; }
   .modal-icon  { font-size:40px;margin-bottom:14px; }
   .modal-title { font-size:20px;font-weight:700;margin-bottom:12px; }
   .modal-body  { font-size:14px;color:var(--text-2);line-height:1.6;margin-bottom:24px; }
   .modal-actions { display:flex;gap:10px;justify-content:center; }
-
-  /* Modal transition */
   .modal-fade-enter-active,.modal-fade-leave-active { transition:opacity .2s ease,transform .2s ease; }
   .modal-fade-enter-from,.modal-fade-leave-to { opacity:0;transform:scale(.95); }
 </style>
@@ -219,15 +179,9 @@
 const { createApp } = Vue;
 createApp({
   delimiters: ['[[', ']]'],
-  data() {
-    return {
-      modal: { show: false, id: null, name: '' }
-    }
-  },
+  data() { return { modal: { show: false, id: null, name: '' } } },
   methods: {
-    confirmDelete(id, name) {
-      this.modal = { show: true, id, name };
-    }
+    confirmDelete(id, name) { this.modal = { show: true, id, name }; }
   }
 }).mount('#app');
 </script>

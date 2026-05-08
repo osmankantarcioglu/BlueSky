@@ -93,7 +93,7 @@ def feed_create():
     sentences = json.loads(raw_sentences) if raw_sentences else None
 
     if not feed_id or not display_name or not topic:
-        flash("feed_id, display_name ve topic zorunludur.", "danger")
+        flash("feed_id, display_name and topic are required.", "danger")
         return redirect(url_for("admin.feed_new"))
 
     try:
@@ -110,10 +110,10 @@ def feed_create():
             seed_sentences=sentences,
             publish_to_bluesky=publish_bsky,
         )
-        flash(f"Feed '{feed.display_name}' başarıyla oluşturuldu!", "success")
+        flash(f"Feed '{feed.display_name}' created successfully!", "success")
         return redirect(url_for("admin.feed_detail", feed_id=feed.id))
     except Exception as exc:
-        flash(f"Hata: {exc}", "danger")
+        flash(f"Error: {exc}", "danger")
         return redirect(url_for("admin.feed_new"))
 
 
@@ -146,8 +146,8 @@ def feed_toggle(feed_id: int):
         abort(404)
     feed.is_active = not feed.is_active
     feed.touch()
-    status = "aktif" if feed.is_active else "pasif"
-    flash(f"Feed '{feed.display_name}' artık {status}.", "info")
+    status = "active" if feed.is_active else "stopped"
+    flash(f"Feed '{feed.display_name}' is now {status}.", "info")
     return redirect(url_for("admin.feed_detail", feed_id=feed_id))
 
 
@@ -163,9 +163,9 @@ def feed_rebuild(feed_id: int):
     try:
         from nlp.pipeline import MultiPipeline
         MultiPipeline.build_centroid_for_feed(feed)
-        flash("Centroid yeniden oluşturuldu.", "success")
+        flash("Centroid rebuilt successfully.", "success")
     except Exception as exc:
-        flash(f"Centroid oluşturma hatası: {exc}", "danger")
+        flash(f"Centroid rebuild error: {exc}", "danger")
     return redirect(url_for("admin.feed_detail", feed_id=feed_id))
 
 
@@ -182,5 +182,5 @@ def feed_delete(feed_id: int):
     # Detach posts (feed_id → NULL) then delete the feed record
     Post.update(feed=None).where(Post.feed_id == feed_id).execute()
     feed.delete_instance()
-    flash(f"'{name}' feed'i kalıcı olarak silindi.", "danger")
+    flash(f"Feed '{name}' has been permanently deleted.", "danger")
     return redirect(url_for("admin.dashboard"))

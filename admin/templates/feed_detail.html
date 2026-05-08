@@ -10,15 +10,15 @@
     <div class="hero-inner">
       <div class="hero-left">
         <div class="flex items-center gap-3 mb-3">
-          <span class="badge {% if feed.is_active %}badge-active{% else %}badge-inactive{% endif %}">
-            {% if feed.is_active %}● Aktif{% else %}○ Pasif{% endif %}
+          <span class="badge {% if feed.is_active %}badge-active{% else %}badge-stopped{% endif %}">
+            {% if feed.is_active %}● Active{% else %}■ Stopped{% endif %}
           </span>
           <span class="badge badge-lang">{{ feed.language }}</span>
           <span class="badge badge-model">{{ feed.embedding_model }}</span>
           {% if feed.centroid %}
           <span class="badge" style="background:rgba(99,102,241,.15);color:var(--primary-l);border:1px solid rgba(99,102,241,.3);">⬡ Centroid ✓</span>
           {% else %}
-          <span class="badge" style="background:rgba(245,158,11,.1);color:#fcd34d;border:1px solid rgba(245,158,11,.2);">⬡ Centroid Bekleniyor</span>
+          <span class="badge" style="background:rgba(245,158,11,.1);color:#fcd34d;border:1px solid rgba(245,158,11,.2);">⬡ Centroid Pending</span>
           {% endif %}
         </div>
         <h1 class="glow-text hero-title">{{ feed.display_name }}</h1>
@@ -27,20 +27,21 @@
         <p class="mono mt-2" style="font-size:11px;color:var(--text-3);">{{ feed.at_uri }}</p>
         {% endif %}
       </div>
+
       <div class="hero-actions" id="detail-actions">
         <form method="POST" action="{{ url_for('admin.feed_toggle', feed_id=feed.id) }}" style="display:inline;">
           <button class="btn {% if feed.is_active %}btn-danger{% else %}btn-success{% endif %}">
-            {% if feed.is_active %}⏸ Durdur{% else %}▶ Başlat{% endif %}
+            {% if feed.is_active %}⏸ Stop Feed{% else %}▶ Start Feed{% endif %}
           </button>
         </form>
         <form method="POST" action="{{ url_for('admin.feed_rebuild', feed_id=feed.id) }}"
-              onsubmit="return confirm('Centroid yeniden oluşturulsun mu? Bu birkaç dakika sürebilir.')"
+              onsubmit="return confirm('Rebuild centroid? This may take a few minutes.')"
               style="display:inline;">
-          <button class="btn btn-ghost">🔄 Centroid Yenile</button>
+          <button class="btn btn-ghost">🔄 Rebuild Centroid</button>
         </form>
         <button class="btn" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);"
                 @click="showDeleteModal=true">
-          🗑 Feed'i Sil
+          🗑 Delete Feed
         </button>
         <a href="{{ url_for('admin.dashboard') }}" class="btn btn-ghost">← Dashboard</a>
       </div>
@@ -50,19 +51,20 @@
         <div v-if="showDeleteModal" class="modal-backdrop" @click.self="showDeleteModal=false">
           <div class="modal-box">
             <div class="modal-icon">🗑</div>
-            <h3 class="modal-title">Feed'i Kalıcı Sil</h3>
+            <h3 class="modal-title">Delete Feed</h3>
             <p class="modal-body">
-              <strong style="color:var(--text);">{{ feed.display_name }}</strong> feed'ini silmek istediğine emin misin?
+              Are you sure you want to permanently delete
+              <strong style="color:var(--text);">{{ feed.display_name }}</strong>?
               <span style="color:var(--text-3);font-size:12px;margin-top:6px;display:block;">
-                Bu feed'e bağlı postların referansı kaldırılacak. Bu işlem geri alınamaz.
+                All posts linked to this feed will lose their feed reference. This cannot be undone.
               </span>
             </p>
             <div class="modal-actions">
-              <button class="btn btn-ghost" @click="showDeleteModal=false">İptal</button>
+              <button class="btn btn-ghost" @click="showDeleteModal=false">Cancel</button>
               <form action="{{ url_for('admin.feed_delete', feed_id=feed.id) }}" method="POST" style="display:contents;">
                 <button type="submit" class="btn"
                         style="background:rgba(239,68,68,.2);color:#fca5a5;border:1px solid rgba(239,68,68,.4);">
-                  Evet, Kalıcı Sil
+                  Yes, Delete
                 </button>
               </form>
             </div>
@@ -74,104 +76,92 @@
 
   <!-- Stats row -->
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;">
-    <div class="glass" style="padding:16px 18px; position:relative; overflow:hidden;">
+    <div class="glass" style="padding:16px 18px;">
       <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Feed ID</div>
       <div class="mono" style="font-size:13px;color:var(--primary-l);">{{ feed.feed_id }}</div>
     </div>
     <div class="glass" style="padding:16px 18px;">
-      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Eşik</div>
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Threshold</div>
       <div style="font-size:22px;font-weight:700;color:#67e8f9;">{{ feed.similarity_threshold }}</div>
     </div>
     <div class="glass" style="padding:16px 18px;">
-      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Keyword</div>
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Keywords</div>
       <div style="font-size:22px;font-weight:700;color:var(--primary-l);">{{ feed.get_keywords()|length }}</div>
     </div>
     <div class="glass" style="padding:16px 18px;">
-      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Seed Cümle</div>
+      <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Seed Sentences</div>
       <div style="font-size:22px;font-weight:700;color:#6ee7b7;">{{ feed.get_seed_sentences()|length }}</div>
     </div>
   </div>
 
   <!-- Keywords + Sentences -->
   <div class="grid-2 mb-4">
-    <!-- Keywords -->
     <div class="glass" style="padding:22px;">
       <div class="flex items-center justify-between mb-3">
-        <span style="font-size:14px;font-weight:700;">🗝 Keyword Bulutu</span>
-        <span class="badge badge-model">{{ feed.get_keywords()|length }} adet</span>
+        <span style="font-size:14px;font-weight:700;">🗝 Keyword Cloud</span>
+        <span class="badge badge-model">{{ feed.get_keywords()|length }} total</span>
       </div>
       <div class="keyword-cloud">
         {% for kw in feed.get_keywords() %}
-        <span class="kw-tag" style="animation-delay: {{ loop.index0 * 0.015 }}s;">{{ kw }}</span>
+        <span class="kw-tag" style="animation-delay:{{ loop.index0 * 0.015 }}s;">{{ kw }}</span>
         {% endfor %}
       </div>
     </div>
 
-    <!-- Seed sentences -->
     <div class="glass" style="padding:22px;">
       <div class="flex items-center justify-between mb-3">
-        <span style="font-size:14px;font-weight:700;">💬 Seed Cümleleri</span>
-        <span class="badge badge-active">{{ feed.get_seed_sentences()|length }} adet</span>
+        <span style="font-size:14px;font-weight:700;">💬 Seed Sentences</span>
+        <span class="badge badge-active">{{ feed.get_seed_sentences()|length }} total</span>
       </div>
       <div class="scroll-box" style="max-height:280px;">
         {% for s in feed.get_seed_sentences() %}
-        <div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,.04); font-size:12px; color:var(--text-2); line-height:1.5;">
-          <span style="color:var(--text-3);margin-right:6px; font-size:10px;">{{ '%02d'|format(loop.index) }}.</span>{{ s }}
+        <div style="padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:var(--text-2);line-height:1.5;">
+          <span style="color:var(--text-3);margin-right:6px;font-size:10px;">{{ '%02d'|format(loop.index) }}.</span>{{ s }}
         </div>
         {% endfor %}
       </div>
     </div>
   </div>
 
-  <!-- Recent posts table -->
-  <div class="glass" style="padding:0; overflow:hidden;">
-    <div class="flex items-center justify-between" style="padding:18px 22px; border-bottom:1px solid var(--border);">
-      <span style="font-size:14px;font-weight:700;">📝 Son Postlar</span>
-      <span class="badge badge-lang">{{ posts|list|length }} kayıt</span>
+  <!-- Recent posts -->
+  <div class="glass" style="padding:0;overflow:hidden;">
+    <div class="flex items-center justify-between" style="padding:18px 22px;border-bottom:1px solid var(--border);">
+      <span style="font-size:14px;font-weight:700;">📝 Recent Posts</span>
+      <span class="badge badge-lang">{{ posts|list|length }} records</span>
     </div>
 
     {% set posts_list = posts|list %}
     {% if not posts_list %}
-    <div style="padding:48px; text-align:center; color:var(--text-3);">
+    <div style="padding:48px;text-align:center;color:var(--text-3);">
       <div style="font-size:36px;margin-bottom:10px;opacity:.3;">📭</div>
-      <p>Bu feed'e henüz post atanmamış.<br>Worker çalışmaya başlayınca postlar burada görünecek.</p>
+      <p>No posts assigned to this feed yet.<br>Posts will appear here once the worker starts collecting.</p>
     </div>
     {% else %}
     <div style="overflow-x:auto;">
       <table class="data-table">
         <thead>
           <tr>
-            <th>Yazar</th>
-            <th style="min-width:300px;">İçerik</th>
-            <th>Skor</th>
-            <th>Tarih</th>
+            <th>Author</th>
+            <th style="min-width:300px;">Content</th>
+            <th>Score</th>
+            <th>Date</th>
           </tr>
         </thead>
         <tbody>
           {% for post in posts_list %}
           <tr>
-            <td>
-              <span class="mono" style="color:var(--primary-l);font-size:11.5px;">
-                {{ post.author_handle or post.author_did[:14] }}
-              </span>
-            </td>
+            <td><span class="mono" style="color:var(--primary-l);font-size:11.5px;">{{ post.author_handle or post.author_did[:14] }}</span></td>
             <td style="max-width:380px;">
               <div style="font-size:12.5px;line-height:1.5;color:var(--text-2);">
                 {{ post.text[:120] }}{% if post.text|length > 120 %}<span style="color:var(--text-3);">…</span>{% endif %}
               </div>
             </td>
             <td style="min-width:90px;">
-              <div style="font-size:12px;font-weight:600;color:var(--primary-l);margin-bottom:3px;">
-                {{ "%.3f"|format(post.domain_score or 0) }}
-              </div>
-              <div class="score-bar">
-                <div class="score-fill" style="width:{{ ((post.domain_score or 0) * 100)|int }}%"></div>
-              </div>
+              <div style="font-size:12px;font-weight:600;color:var(--primary-l);margin-bottom:3px;">{{ "%.3f"|format(post.domain_score or 0) }}</div>
+              <div class="score-bar"><div class="score-fill" style="width:{{ ((post.domain_score or 0) * 100)|int }}%"></div></div>
             </td>
             <td style="white-space:nowrap;">
-              <span style="font-size:11.5px;color:var(--text-3);">
-                {{ post.created_at.strftime('%d %b %H:%M') if post.created_at }}
-              </span>
+              <span style="font-size:11.5px;color:var(--text-3);">{{ post.created_at.strftime('%b %d %H:%M') if post.created_at }}</span>
             </td>
           </tr>
           {% endfor %}
@@ -184,7 +174,6 @@
 </div>
 
 <style>
-  /* Modal */
   .modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px; }
   .modal-box { background:#0f0d1f;border:1px solid rgba(239,68,68,.3);border-radius:18px;padding:36px;max-width:420px;width:100%;box-shadow:0 0 60px rgba(239,68,68,.15),0 20px 60px rgba(0,0,0,.6);text-align:center; }
   .modal-icon  { font-size:40px;margin-bottom:14px; }
@@ -194,21 +183,18 @@
   .modal-fade-enter-active,.modal-fade-leave-active { transition:opacity .2s ease,transform .2s ease; }
   .modal-fade-enter-from,.modal-fade-leave-to { opacity:0;transform:scale(.95); }
 
-  /* Hero */
-  .hero-card { position: relative; overflow: visible; }
-  .hero-glow { position: absolute; top: -60px; right: -60px; width: 300px; height: 300px; background: radial-gradient(circle, rgba(99,102,241,.25), transparent 70%); pointer-events: none; }
-  .hero-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 28px; flex-wrap: wrap; }
-  .hero-left { flex: 1; min-width: 260px; }
-  .hero-title { font-size: 28px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 6px; }
-  .hero-sub { font-size: 14px; color: var(--text-2); line-height: 1.5; }
-  .hero-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+  .hero-card { position:relative;overflow:visible; }
+  .hero-glow { position:absolute;top:-60px;right:-60px;width:300px;height:300px;background:radial-gradient(circle,rgba(99,102,241,.25),transparent 70%);pointer-events:none; }
+  .hero-inner { display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:28px;flex-wrap:wrap; }
+  .hero-left { flex:1;min-width:260px; }
+  .hero-title { font-size:28px;font-weight:800;letter-spacing:-.5px;margin-bottom:6px; }
+  .hero-sub { font-size:14px;color:var(--text-2);line-height:1.5; }
+  .hero-actions { display:flex;flex-direction:column;gap:8px;align-items:flex-end;flex-shrink:0; }
 
-  /* Keyword cloud */
-  .keyword-cloud { line-height: 2; max-height: 280px; overflow-y: auto; }
-  .keyword-cloud::-webkit-scrollbar { width: 4px; }
-  .keyword-cloud::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 2px; }
+  .keyword-cloud { line-height:2;max-height:280px;overflow-y:auto; }
+  .keyword-cloud::-webkit-scrollbar { width:4px; }
+  .keyword-cloud::-webkit-scrollbar-thumb { background:rgba(255,255,255,.1);border-radius:2px; }
 </style>
-{% endblock %}
 
 {% block scripts %}
 <script>
@@ -218,4 +204,5 @@ createApp({
   data() { return { showDeleteModal: false }; }
 }).mount('#app');
 </script>
+{% endblock %}
 {% endblock %}

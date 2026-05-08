@@ -1,125 +1,119 @@
 {% extends "layout.html" %}
-{% block title %}Yeni Feed — BlueSky Feed Studio{% endblock %}
+{% block title %}New Feed — BlueSky Feed Studio{% endblock %}
 
 {% block content %}
 <div id="app">
 
   <div class="page-header">
     <div>
-      <h1 class="page-title glow-text">Yeni Feed Oluştur</h1>
-      <p class="page-sub">AI destekli seed üretimi ve otomatik Bluesky yayınlama.</p>
+      <h1 class="page-title glow-text">Create New Feed</h1>
+      <p class="page-sub">AI-powered seed generation with automatic Bluesky publishing.</p>
     </div>
-    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-ghost btn-sm">← Geri</a>
+    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-ghost btn-sm">← Back</a>
   </div>
 
   <!-- Step indicator -->
   <div class="step-bar mb-4">
     <div class="step-item" :class="{ active: step >= 1, done: step > 1 }">
       <div class="step-dot">[[ step > 1 ? '✓' : '1' ]]</div>
-      <div class="step-label">AI Seed Üretimi</div>
+      <div class="step-label">AI Seed Generation</div>
     </div>
     <div class="step-line" :class="{ lit: step > 1 }"></div>
     <div class="step-item" :class="{ active: step >= 2 }">
       <div class="step-dot">2</div>
-      <div class="step-label">Feed Konfigürasyonu</div>
+      <div class="step-label">Feed Configuration</div>
     </div>
   </div>
 
-  <!-- ── STEP 1: AI Generation ── -->
+  <!-- STEP 1 -->
   <transition name="fade">
     <div v-if="step === 1" class="glass" style="padding:28px;">
-      <div class="section-title">🤖 Konu Gir — AI Üretsin</div>
-      <p class="text-sm text-muted mt-1 mb-4">Bir konu adı yaz, GPT-4o 100+ keyword ve 50+ sosyal medya cümlesi üretecek.</p>
+      <div class="section-title">🤖 Enter a Topic — Let AI Generate the Seeds</div>
+      <p class="text-sm text-muted mt-1 mb-4">Type a topic name and GPT-4o will generate 100+ keywords and 50+ social media sentences.</p>
 
       <div class="grid-2 mb-3">
         <div class="field-group">
-          <label class="field-label">Konu *</label>
-          <input v-model="topic" class="field-input" placeholder="örn: NBA Playoffs 2026, Kripto Para, Türk Mutfağı"
+          <label class="field-label">Topic *</label>
+          <input v-model="topic" class="field-input"
+                 placeholder="e.g. NBA Playoffs 2026, Crypto, Turkish Cuisine"
                  @keyup.enter="generate" />
         </div>
         <div class="field-group">
-          <label class="field-label">İçerik Dili</label>
+          <label class="field-label">Content Language</label>
           <select v-model="language" class="field-select">
-            <option value="tr">🇹🇷 Türkçe</option>
+            <option value="tr">🇹🇷 Turkish</option>
             <option value="en">🇺🇸 English</option>
-            <option value="multi">🌍 Çok Dilli</option>
+            <option value="multi">🌍 Multilingual</option>
           </select>
         </div>
       </div>
 
-      <button class="btn btn-primary w-full" @click="generate" :disabled="generating || !topic.trim()" style="justify-content:center; padding:14px;">
-        <span v-if="!generating">✦ AI ile Seed Verisi Üret</span>
+      <button class="btn btn-primary w-full" @click="generate"
+              :disabled="generating || !topic.trim()" style="justify-content:center;padding:14px;">
+        <span v-if="!generating">✦ Generate Seeds with AI</span>
         <span v-else style="display:flex;align-items:center;gap:10px;">
-          <span class="spinner"></span> GPT-4o çalışıyor…
+          <span class="spinner"></span> GPT-4o is working…
         </span>
       </button>
 
-      <!-- Error -->
       <div v-if="error" class="flash-msg flash-danger mt-3">
         <span>⚠ [[ error ]]</span>
         <button class="flash-close" @click="error=''">✕</button>
       </div>
 
-      <!-- Preview (shown after generation) -->
       <transition name="fade">
         <div v-if="keywords.length" class="mt-4">
           <div class="divider"></div>
 
-          <!-- Stats row -->
           <div class="grid-3 mb-4" style="gap:10px;">
-            <div class="glass" style="padding:14px 18px; text-align:center;">
+            <div class="glass" style="padding:14px 18px;text-align:center;">
               <div style="font-size:24px;font-weight:700;color:var(--primary-l);">[[ keywords.length ]]</div>
-              <div class="text-xs text-muted">Keyword</div>
+              <div class="text-xs text-muted">Keywords</div>
             </div>
-            <div class="glass" style="padding:14px 18px; text-align:center;">
+            <div class="glass" style="padding:14px 18px;text-align:center;">
               <div style="font-size:24px;font-weight:700;color:#6ee7b7;">[[ sentences.length ]]</div>
-              <div class="text-xs text-muted">Seed Cümle</div>
+              <div class="text-xs text-muted">Seed Sentences</div>
             </div>
-            <div class="glass" style="padding:14px 18px; text-align:center;">
-              <div style="font-size:24px;font-weight:700;color:#67e8f9;">[[ suggestedId ]]</div>
-              <div class="text-xs text-muted">Önerilen Feed ID</div>
+            <div class="glass" style="padding:14px 18px;text-align:center;">
+              <div style="font-size:14px;font-weight:700;color:#67e8f9;" class="mono">[[ suggestedId ]]</div>
+              <div class="text-xs text-muted">Suggested ID</div>
             </div>
           </div>
 
-          <!-- Keyword cloud -->
-          <div class="section-title mb-2">🗝 Keyword Bulutu</div>
+          <div class="section-title mb-2">🗝 Keyword Cloud</div>
           <div class="keyword-cloud mb-4">
             <span v-for="(kw, i) in keywords.slice(0, 60)" :key="i"
-                  class="kw-tag" :style="{animationDelay: (i * 0.018) + 's'}">
-              [[ kw ]]
-            </span>
+                  class="kw-tag" :style="{animationDelay: (i * 0.018) + 's'}">[[ kw ]]</span>
             <span v-if="keywords.length > 60" class="kw-tag" style="opacity:.5;">
-              +[[ keywords.length - 60 ]] daha…
+              +[[ keywords.length - 60 ]] more…
             </span>
           </div>
 
-          <!-- Seed sentences -->
-          <div class="section-title mb-2">💬 Seed Cümle Önizleme</div>
+          <div class="section-title mb-2">💬 Seed Sentence Preview</div>
           <div class="scroll-box mb-4">
-            <div v-for="(s, i) in sentences.slice(0, 20)" :key="i" style="padding:3px 0; border-bottom:1px solid rgba(255,255,255,.04);">
-              <span style="color:var(--text-3); margin-right:6px;">[[ String(i+1).padStart(2,'0') ]].</span>[[ s ]]
+            <div v-for="(s, i) in sentences.slice(0, 20)" :key="i"
+                 style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);">
+              <span style="color:var(--text-3);margin-right:6px;">[[ String(i+1).padStart(2,'0') ]].</span>[[ s ]]
             </div>
-            <div v-if="sentences.length > 20" style="color:var(--text-3); padding-top:6px; text-align:center; font-size:11px;">
-              … ve [[ sentences.length - 20 ]] cümle daha
+            <div v-if="sentences.length > 20" style="color:var(--text-3);padding-top:6px;text-align:center;font-size:11px;">
+              … and [[ sentences.length - 20 ]] more sentences
             </div>
           </div>
 
           <div class="flex gap-3">
-            <button class="btn btn-primary" @click="step = 2">
-              Devam Et →
-            </button>
-            <button class="btn btn-ghost" @click="generate">🔄 Yeniden Üret</button>
+            <button class="btn btn-primary" @click="step = 2">Continue →</button>
+            <button class="btn btn-ghost" @click="generate">🔄 Regenerate</button>
           </div>
         </div>
       </transition>
     </div>
   </transition>
 
-  <!-- ── STEP 2: Feed form ── -->
+  <!-- STEP 2 -->
   <transition name="fade">
     <div v-if="step === 2">
       <div class="glass mb-4" style="padding:28px;">
-        <div class="section-title mb-4">⚙️ Feed Konfigürasyonu</div>
+        <div class="section-title mb-4">⚙️ Feed Configuration</div>
 
         <form method="POST" action="{{ url_for('admin.feed_create') }}" id="create-form" @submit="onSubmit">
           <input type="hidden" name="keywords_json"  :value="JSON.stringify(keywords)">
@@ -131,37 +125,37 @@
               <input type="text" name="feed_id" v-model="feedId"
                      class="field-input mono" placeholder="world-cup-2026"
                      required pattern="[a-z0-9\-]+" />
-              <span class="field-hint">Küçük harf, sayı ve tire. Bluesky rkey olarak kullanılır.</span>
+              <span class="field-hint">Lowercase letters, numbers and hyphens. Used as Bluesky rkey.</span>
             </div>
             <div class="field-group">
-              <label class="field-label">Feed Görünen Adı *</label>
+              <label class="field-label">Display Name *</label>
               <input type="text" name="display_name" v-model="displayName"
-                     class="field-input" placeholder="FIFA Dünya Kupası 2026" required />
+                     class="field-input" placeholder="FIFA World Cup 2026" required />
             </div>
           </div>
 
           <div class="field-group mb-3">
-            <label class="field-label">Konu *</label>
+            <label class="field-label">Topic *</label>
             <input type="text" name="topic" v-model="topic" class="field-input" required />
           </div>
 
           <div class="field-group mb-3">
-            <label class="field-label">Açıklama</label>
+            <label class="field-label">Description</label>
             <textarea name="description" class="field-textarea" rows="2"
-                      placeholder="Bu feed hakkında kısa açıklama"></textarea>
+                      placeholder="Short description about this feed"></textarea>
           </div>
 
           <div class="grid-3 mb-3">
             <div class="field-group">
-              <label class="field-label">Dil</label>
+              <label class="field-label">Language</label>
               <select name="language" v-model="language" class="field-select">
-                <option value="tr">🇹🇷 Türkçe</option>
+                <option value="tr">🇹🇷 Turkish</option>
                 <option value="en">🇺🇸 English</option>
-                <option value="multi">🌍 Çok Dilli</option>
+                <option value="multi">🌍 Multilingual</option>
               </select>
             </div>
             <div class="field-group">
-              <label class="field-label">Embedding Modeli</label>
+              <label class="field-label">Embedding Model</label>
               <select name="embedding_model" v-model="embModel" class="field-select">
                 <option value="berturk">BERTurk (TR)</option>
                 <option value="minilm">MiniLM (EN)</option>
@@ -169,30 +163,31 @@
               </select>
             </div>
             <div class="field-group">
-              <label class="field-label">Benzerlik Eşiği</label>
+              <label class="field-label">Similarity Threshold</label>
               <input type="number" name="similarity_threshold" class="field-input"
                      v-model="threshold" min="0.10" max="0.90" step="0.05" />
             </div>
           </div>
 
-          <!-- Bluesky publish toggle -->
           <div class="publish-toggle mb-4" @click="publishBsky = !publishBsky">
             <div class="toggle-track" :class="{ on: publishBsky }">
               <div class="toggle-thumb"></div>
             </div>
             <div>
-              <div style="font-size:13.5px; font-weight:600;">Bluesky'a Otomatik Yayınla</div>
-              <div class="text-xs text-muted">Feed'i AT Protocol üzerinde kaydet</div>
+              <div style="font-size:13.5px;font-weight:600;">Publish to Bluesky automatically</div>
+              <div class="text-xs text-muted">Register the feed on the AT Protocol</div>
             </div>
             <input type="checkbox" name="publish_bluesky" :checked="publishBsky" style="display:none">
           </div>
 
           <div class="flex gap-3">
             <button type="submit" class="btn btn-primary" :disabled="submitting">
-              <span v-if="!submitting">🚀 Feed Oluştur</span>
-              <span v-else style="display:flex;align-items:center;gap:8px;"><span class="spinner" style="width:14px;height:14px;"></span> Oluşturuluyor…</span>
+              <span v-if="!submitting">🚀 Create Feed</span>
+              <span v-else style="display:flex;align-items:center;gap:8px;">
+                <span class="spinner" style="width:14px;height:14px;"></span> Creating…
+              </span>
             </button>
-            <button type="button" class="btn btn-ghost" @click="step = 1">← Geri</button>
+            <button type="button" class="btn btn-ghost" @click="step = 1">← Back</button>
           </div>
         </form>
       </div>
@@ -203,34 +198,22 @@
 
 <style>
   .section-title { font-size: 14px; font-weight: 700; color: var(--text); }
-
-  /* Step bar */
   .step-bar { display: flex; align-items: center; }
   .step-item { display: flex; align-items: center; gap: 10px; }
-  .step-dot {
-    width: 32px; height: 32px; border-radius: 50%;
-    background: var(--surface2); border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; font-weight: 700; color: var(--text-2);
-    transition: all .3s ease;
-  }
-  .step-item.active .step-dot { background: linear-gradient(135deg, var(--primary), var(--violet)); border-color: var(--primary); color: #fff; box-shadow: 0 0 20px rgba(99,102,241,.5); }
-  .step-item.done .step-dot   { background: rgba(16,185,129,.2); border-color: rgba(16,185,129,.5); color: #6ee7b7; }
-  .step-label { font-size: 13px; font-weight: 600; color: var(--text-2); }
-  .step-item.active .step-label { color: var(--text); }
-  .step-line { flex: 1; height: 2px; background: var(--border); margin: 0 16px; border-radius: 2px; transition: background .3s; }
-  .step-line.lit { background: linear-gradient(90deg, var(--primary), var(--violet)); }
-
-  /* Keyword cloud */
+  .step-dot { width:32px;height:32px;border-radius:50%;background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--text-2);transition:all .3s ease; }
+  .step-item.active .step-dot { background:linear-gradient(135deg,var(--primary),var(--violet));border-color:var(--primary);color:#fff;box-shadow:0 0 20px rgba(99,102,241,.5); }
+  .step-item.done .step-dot   { background:rgba(16,185,129,.2);border-color:rgba(16,185,129,.5);color:#6ee7b7; }
+  .step-label { font-size:13px;font-weight:600;color:var(--text-2); }
+  .step-item.active .step-label { color:var(--text); }
+  .step-line { flex:1;height:2px;background:var(--border);margin:0 16px;border-radius:2px;transition:background .3s; }
+  .step-line.lit { background:linear-gradient(90deg,var(--primary),var(--violet)); }
   .keyword-cloud { line-height: 1.9; }
-
-  /* Toggle */
-  .publish-toggle { display: flex; align-items: center; gap: 14px; cursor: pointer; padding: 14px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); user-select: none; transition: border-color .2s; }
-  .publish-toggle:hover { border-color: rgba(255,255,255,.15); }
-  .toggle-track { width: 44px; height: 24px; border-radius: 12px; background: rgba(255,255,255,.1); border: 1px solid var(--border); position: relative; flex-shrink: 0; transition: all .3s ease; }
-  .toggle-track.on { background: linear-gradient(90deg, var(--primary), var(--violet)); border-color: var(--primary); box-shadow: 0 0 12px rgba(99,102,241,.4); }
-  .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .3s ease; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
-  .toggle-track.on .toggle-thumb { transform: translateX(20px); }
+  .publish-toggle { display:flex;align-items:center;gap:14px;cursor:pointer;padding:14px 16px;border-radius:10px;background:var(--surface);border:1px solid var(--border);user-select:none;transition:border-color .2s; }
+  .publish-toggle:hover { border-color:rgba(255,255,255,.15); }
+  .toggle-track { width:44px;height:24px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid var(--border);position:relative;flex-shrink:0;transition:all .3s ease; }
+  .toggle-track.on { background:linear-gradient(90deg,var(--primary),var(--violet));border-color:var(--primary);box-shadow:0 0 12px rgba(99,102,241,.4); }
+  .toggle-thumb { position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .3s ease;box-shadow:0 1px 3px rgba(0,0,0,.3); }
+  .toggle-track.on .toggle-thumb { transform:translateX(20px); }
 </style>
 
 {% block scripts %}
@@ -240,20 +223,10 @@ createApp({
   delimiters: ['[[', ']]'],
   data() {
     return {
-      step: 1,
-      topic: '',
-      language: 'tr',
-      embModel: 'berturk',
-      threshold: 0.30,
-      feedId: '',
-      displayName: '',
-      keywords: [],
-      sentences: [],
-      suggestedId: '',
-      generating: false,
-      submitting: false,
-      publishBsky: true,
-      error: '',
+      step: 1, topic: '', language: 'tr', embModel: 'berturk',
+      threshold: 0.30, feedId: '', displayName: '',
+      keywords: [], sentences: [], suggestedId: '',
+      generating: false, submitting: false, publishBsky: true, error: '',
     }
   },
   watch: {
@@ -265,8 +238,7 @@ createApp({
   methods: {
     async generate() {
       if (!this.topic.trim()) return;
-      this.generating = true;
-      this.error = '';
+      this.generating = true; this.error = '';
       try {
         const res = await fetch('{{ url_for("admin.feed_generate") }}', {
           method: 'POST',
@@ -274,21 +246,19 @@ createApp({
           body: JSON.stringify({ topic: this.topic, language: this.language }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Bilinmeyen hata');
-        this.keywords  = data.keywords || [];
-        this.sentences = data.seed_sentences || [];
-        this.suggestedId  = data.suggested_id || '';
-        this.feedId       = data.suggested_id || '';
-        this.displayName  = this.topic;
+        if (!res.ok) throw new Error(data.error || 'Unknown error');
+        this.keywords   = data.keywords || [];
+        this.sentences  = data.seed_sentences || [];
+        this.suggestedId   = data.suggested_id || '';
+        this.feedId        = data.suggested_id || '';
+        this.displayName   = this.topic;
       } catch (e) {
         this.error = e.message;
       } finally {
         this.generating = false;
       }
     },
-    onSubmit() {
-      this.submitting = true;
-    }
+    onSubmit() { this.submitting = true; }
   }
 }).mount('#app');
 </script>
