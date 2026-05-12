@@ -1,6 +1,8 @@
-# BlueSky Turkish Politics & Science Feed Generator
+# BlueSky Feed Studio
 
-A custom feed generator for the [Bluesky](https://bsky.app) social network that curates Turkish-language posts about **politics** and **science** in real time. Built on the AT Protocol firehose, BERTurk NLP embeddings, PostgreSQL, and Flask — deployed on [Railway](https://railway.app).
+A dynamic, AI-powered Bluesky custom feed generation platform. Create, publish, and manage any number of topic-based feeds directly from a web admin panel — no code changes required. Built on the AT Protocol firehose, NLP sentence embeddings, GPT-4o seed generation, and Vue.js — deployed on [Railway](https://railway.app).
+
+**Live admin panel:** `https://web-production-77bc8f.up.railway.app/admin`
 
 ---
 
@@ -8,123 +10,110 @@ A custom feed generator for the [Bluesky](https://bsky.app) social network that 
 
 1. [Overview](#overview)
 2. [Architecture](#architecture)
-3. [Data Flow](#data-flow)
+3. [How a New Feed Gets Created](#how-a-new-feed-gets-created)
 4. [Project Structure](#project-structure)
 5. [Components](#components)
-   - [Config](#1-configsettingspy)
-   - [Database Models](#2-databasemodelspy)
-   - [Firehose Listener](#3-data_collectionfirehose_listenerpy)
-   - [Seed Discovery](#4-data_collectionseed_discoverypy)
-   - [Turkish Embedder](#5-nlpembedderpy)
-   - [Domain Classifier](#6-nlpdomain_classifierpy)
-   - [Stance Detector](#7-nlpstance_detectorpy)
-   - [NLP Pipeline](#8-nlppipelinepy)
-   - [Feed Logic](#9-feed_generatorfeed_logicpy)
-   - [Feed Server](#10-feed_generatorserverpy)
-   - [Scripts](#11-scripts)
-6. [NLP Classification Details](#nlp-classification-details)
-7. [Ranking Algorithm](#ranking-algorithm)
-8. [Deployment](#deployment)
-   - [Local Development](#local-development)
-   - [Railway Production](#railway-production)
-9. [Environment Variables](#environment-variables)
-10. [Database Schema](#database-schema)
-11. [Key Parameters](#key-parameters)
-12. [Performance Notes](#performance-notes)
-13. [Troubleshooting](#troubleshooting)
+6. [NLP Pipeline](#nlp-pipeline)
+7. [Feed Ranking](#feed-ranking)
+8. [Admin Panel](#admin-panel)
+9. [Deployment](#deployment)
+10. [Environment Variables](#environment-variables)
+11. [Database Schema](#database-schema)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-This project creates two publicly accessible Bluesky custom feeds:
+BlueSky Feed Studio lets you create custom Bluesky feeds for any topic without touching code. The platform:
 
-| Feed | Rkey | Description |
-|------|------|-------------|
-| Türkiye Siyaset | `turkiye-siyaset` | Turkish political posts — party news, parliament, elections |
-| Türkiye Bilim | `turkiye-bilim` | Turkish science posts — research, academia, publications |
+- **Generates seed data with AI** — enter a topic, GPT-4o produces 100+ keywords and 50+ social-media-style sentences
+- **Builds NLP centroids automatically** — the worker computes a 768-dim embedding centroid from the seed sentences
+- **Publishes to Bluesky via AT Protocol** — the feed is registered under your account with one click
+- **Filters the firehose in real time** — posts are classified by cosine similarity to the feed's centroid
+- **Hot-reloads without restart** — the worker polls the database every 60 seconds and picks up new feeds automatically
 
-Both feeds are registered on Bluesky under the account `osmankantarcioglu.bsky.social` and served from a Railway-hosted Flask application. Posts are collected from a curated set of 270 seed users (politicians, academics, journalists) via the AT Protocol firehose and classified by a BERTurk-based NLP pipeline before being stored in a shared PostgreSQL database.
+### Default Feeds
 
-**Key design decisions:**
-- Seed users give a high-quality, domain-relevant starting corpus instead of searching the entire Bluesky network
-- NLP classification uses zero-shot centroid similarity — no labeled training data required
-- Politics and science are mutually exclusive — every post gets exactly one label or is discarded
-- Stance detection (alliance vs. opposition) is computed only for politics posts
-- Two separate Railway services: a lightweight Flask server and a full ML worker
+Two feeds bootstrapped automatically on first worker startup:
+
+| Feed | Rkey | Language | Description |
+|------|------|----------|-------------|
+| Türkiye Siyaset | `turkiye-siyaset` | Turkish | Turkish political posts — parliament, parties, elections |
+| Türkiye Bilim | `turkiye-bilim` | Turkish | Turkish science — research, academia, publications |
 
 ---
 
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                   Bluesky Firehose                         │
-│         (AT Protocol WebSocket — ~300 events/sec)          │
-└─────────────────────────┬──────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│               FirehoseProcessor (Railway Worker)            │
-│                                                             │
-│  Stage 1: Event type filter  (only app.bsky.feed.post)     │
-│  Stage 2: Fast pre-filter    (seed DID ∨ keyword match)    │
-│  Stage 3: NLP pipeline       (language → embed → classify) │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                     NLP Pipeline                            │
-│                                                             │
-│  ① Turkish language detection (langdetect ≥ 0.80)          │
-│  ② BERTurk embedding (768-dimensional vector)              │
-│  ③ Domain classification (cosine similarity to centroids)  │
-│     └─ politics | science | other (discarded)              │
-│  ④ Stance detection (politics only)                        │
-│     └─ alliance | opposition | neutral                     │
-│  ⑤ Feed score computation & DB write                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│              PostgreSQL Database (Railway)                  │
-│                                                             │
-│  tracked_users   posts   like_events                       │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│             Flask Feed Server (Railway Web)                 │
-│                                                             │
-│  /.well-known/did.json                                     │
-│  /xrpc/app.bsky.feed.describeFeedGenerator                 │
-│  /xrpc/app.bsky.feed.getFeedSkeleton                       │
-│  /health                                                   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-              Bluesky clients (web, mobile apps)
+┌──────────────────────────────────────────────────────────────┐
+│                  Admin Panel  (/admin)                       │
+│                  Vue 3 + Glassmorphism UI                    │
+│                                                              │
+│  1. Enter topic → GPT-4o generates keywords + sentences      │
+│  2. Review → submit form                                     │
+│  3. Feed saved to DB → published to Bluesky (AT Protocol)   │
+└──────────────────────────────┬───────────────────────────────┘
+                               │  PostgreSQL
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│              feeds table  (one row per feed)                 │
+│   id │ feed_id │ keywords (JSON) │ centroid (JSON) │ at_uri  │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+              ┌────────────────┴─────────────────┐
+              │                                  │
+              ▼                                  ▼
+┌─────────────────────────┐      ┌───────────────────────────┐
+│  Flask Feed Server      │      │  NLP Worker (firehose)    │
+│  (Railway web)          │      │  (Railway BlueSky)        │
+│                         │      │                           │
+│  AT Protocol endpoints  │      │  ① Poll DB every 60s     │
+│  /admin (Vue.js UI)     │      │  ② Build missing centroids│
+│  Dynamic feed routing   │      │  ③ Subscribe to firehose  │
+│  by Feed.at_uri         │      │  ④ Keyword pre-filter     │
+└─────────────────────────┘      │  ⑤ Cosine similarity      │
+                                 │  ⑥ Save matched posts     │
+                                 └───────────────────────────┘
+                                           │
+                                           ▼
+                              AT Protocol Firehose
+                         wss://bsky.network  (~300 events/sec)
 ```
 
 ---
 
-## Data Flow
+## How a New Feed Gets Created
 
-1. **Firehose ingestion** — The AT Protocol firehose streams every create/delete event on Bluesky (~200-500 messages/second). The `FirehoseProcessor` subscribes via WebSocket, decodes CAR-encoded blocks, and extracts post records.
-
-2. **Fast filtering** — Before any expensive NLP, two cheap checks run:
-   - Is the author in the seed DID set? (O(1) hash lookup)
-   - Does the post text contain at least one domain keyword? (O(k) linear scan over ~110 keywords)
-   Any post passing either check goes into the NLP queue.
-
-3. **NLP processing (batched)** — A background worker drains the queue in batches of up to 32 posts every 5 seconds:
-   - Language detection rejects non-Turkish posts
-   - BERTurk embedder converts text to a 768-dimensional semantic vector
-   - Domain classifier computes cosine similarity to pre-built centroid vectors
-   - Stance detector runs only on politics-classified posts
-   - `feed_score` is computed and the post is upserted into the database
-
-4. **Feed serving** — When a Bluesky client requests a feed, the Flask server queries PostgreSQL for posts matching the domain label, ordered by `feed_score`. It returns a list of AT URIs as a `FeedSkeleton`.
+```
+User fills form in Admin Panel
+          │
+          ▼
+POST /admin/feeds/generate
+    GPT-4o generates:
+    ├── 100+ keywords  (used for fast pre-filter)
+    └── 50+  seed sentences (used to build centroid)
+          │
+          ▼
+POST /admin/feeds
+    ├── Save Feed record to DB (keywords + sentences as JSON)
+    ├── Build centroid:
+    │     embed_batch(seed_sentences) → mean → normalize → store as JSON
+    ├── Publish to Bluesky:
+    │     atproto.client.put_record(app.bsky.feed.generator, rkey)
+    │     → returns AT URI → saved to Feed.at_uri
+    └── Feed.is_active = True
+          │
+          ▼
+Worker polls DB (next 60s cycle)
+    ├── Detects new/changed feed
+    ├── Rebuilds keyword_index {keyword → {feed_ids}}
+    └── Loads new FeedClassifier with centroid
+          │
+          ▼
+Firehose posts now matched against the new feed
+```
 
 ---
 
@@ -132,612 +121,410 @@ Both feeds are registered on Bluesky under the account `osmankantarcioglu.bsky.s
 
 ```
 BlueSky/
-├── config/
+│
+├── admin/                          # Admin panel blueprint
 │   ├── __init__.py
-│   └── settings.py                  # All constants, thresholds, keyword lists
+│   ├── routes.py                   # Flask Blueprint — all /admin/* routes
+│   ├── services.py                 # Feed creation business logic
+│   └── templates/
+│       ├── layout.html             # Base layout: animated blobs, glass sidebar, Vue CDN
+│       ├── dashboard.html          # Feed grid with stop/start/delete actions
+│       ├── feed_new.html           # 2-step wizard: AI generate → configure
+│       └── feed_detail.html        # Keyword cloud, seed sentences, recent posts
+│
+├── config/
+│   └── settings.py                 # All constants + env variable loading
 │
 ├── database/
-│   ├── __init__.py
-│   └── models.py                    # Peewee ORM — SQLite (dev) / PostgreSQL (prod)
+│   └── models.py                   # Peewee ORM: Feed, Post, TrackedUser, LikeEvent, FeedSeedUser
 │
 ├── data_collection/
-│   ├── __init__.py
-│   ├── firehose_listener.py         # Real-time AT Protocol stream consumer
-│   └── seed_discovery.py            # Loads seed users from Excel → DB
-│
-├── nlp/
-│   ├── __init__.py
-│   ├── embedder.py                  # BERTurk sentence embeddings
-│   ├── domain_classifier.py         # Politics vs Science (centroid similarity)
-│   ├── stance_detector.py           # Alliance vs Opposition detection
-│   └── pipeline.py                  # Orchestrates the full NLP workflow
+│   ├── firehose_listener.py        # AT Protocol firehose subscriber + multi-feed routing
+│   └── seed_discovery.py           # Load seed users from Excel → TrackedUser table
 │
 ├── feed_generator/
-│   ├── __init__.py
-│   ├── server.py                    # Flask HTTP server (AT Protocol endpoints)
-│   └── feed_logic.py                # Feed ranking algorithm
+│   ├── server.py                   # Flask server: AT Protocol endpoints + admin registration
+│   └── feed_logic.py               # Feed ranking algorithm (NLP score + engagement + recency)
+│
+├── nlp/
+│   ├── embedder.py                 # TurkishEmbedder: BERTurk sentence embeddings (768-dim)
+│   ├── model_manager.py            # Singleton cache for embedding models by type
+│   ├── domain_classifier.py        # DomainClassifier (legacy) + FeedClassifier (dynamic)
+│   ├── stance_detector.py          # Alliance vs Opposition stance detection (TR politics)
+│   └── pipeline.py                 # NLPPipeline (legacy) + MultiPipeline (multi-feed)
+│
+├── services/
+│   └── llm_seed_generator.py       # GPT-4o / Claude seed generation for any topic
 │
 ├── scripts/
-│   ├── build_domain_centroids.py    # Pre-builds centroid .npy files
-│   └── publish_feed.py              # Registers feeds on Bluesky
+│   ├── publish_feed.py             # CLI: register a feed on Bluesky
+│   └── build_domain_centroids.py   # CLI: pre-compute default centroids
 │
-├── data/                            # Runtime-generated, not in git
-│   ├── feeds.db                     # SQLite (local dev only)
-│   ├── centroids.npy                # Domain classifier vectors
-│   └── stance_centroids.npy         # Stance detector vectors
-│
-├── Dockerfile.worker                # Railway worker image (ML + firehose)
-├── Procfile                         # Railway web service start command
-├── requirements.txt                 # Lightweight server deps (Railway web)
-├── requirements-nlp.txt             # Full ML deps (Railway worker / local)
-├── runtime.txt                      # Python 3.11
-├── .env.example                     # Environment variable template
-└── .gitignore
+├── Dockerfile.worker               # Railway worker image (CPU torch + NLP deps)
+├── Procfile                        # Railway web start command (waitress)
+├── requirements.txt                # Web server deps (no torch)
+├── requirements-nlp.txt            # Worker deps (torch + sentence-transformers)
+├── runtime.txt                     # Python 3.11
+└── .env.example                    # Environment variable template
 ```
 
 ---
 
 ## Components
 
-### 1. `config/settings.py`
+### `database/models.py`
 
-Single source of truth for all system parameters. Everything is configurable via environment variables with sensible defaults.
+Five Peewee ORM models. Automatic DB switch: `DATABASE_URL` → PostgreSQL (Railway), else SQLite (local dev).
 
-**Credentials and identifiers:**
-```python
-BSKY_HANDLE       = os.getenv("BSKY_HANDLE")
-BSKY_APP_PASSWORD = os.getenv("BSKY_APP_PASSWORD")
-FEED_DOMAIN       = os.getenv("FEED_DOMAIN", "yourdomain.com")
-```
-
-**Feed URIs (overridable via env for published DID:plc identifiers):**
-```python
-FEED_URI_POLITICS = os.getenv(
-    "FEED_URI_POLITICS",
-    f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-siyaset"
-)
-FEED_URI_SCIENCE = os.getenv(
-    "FEED_URI_SCIENCE",
-    f"at://did:web:{FEED_DOMAIN}/app.bsky.feed.generator/turkiye-bilim"
-)
-```
-
-**NLP model:**
-```python
-EMBEDDING_MODEL = "emrecan/bert-base-turkish-cased-mean-nli-stsb-tr"
-EMBEDDING_DIM   = 768
-```
-
-**Classification thresholds:**
-```python
-DOMAIN_SIMILARITY_THRESHOLD = 0.30   # Min cosine similarity to assign a domain
-STANCE_CONFIDENCE_THRESHOLD = 0.60   # Min confidence for stance classification
-MIN_TURKISH_PROB            = 0.80   # langdetect threshold
-```
-
-**Keyword lists (excerpts):**
-
-`POLITICS_KEYWORDS` — 60+ terms including party names (`akp`, `chp`, `mhp`, `hdp`), institutional terms (`tbmm`, `meclis`, `seçim`, `cumhurbaşkanı`), and political events.
-
-`SCIENCE_KEYWORDS` — 50+ terms including academic venues (`nature`, `arxiv`, `dergi`), academic roles (`doçent`, `profösör`, `doktora`), and research activities (`makale`, `tez`, `araştırma`).
-
-`ALLIANCE_KEYWORDS` / `OPPOSITION_KEYWORDS` — keyword sets for stance detection.
-
----
-
-### 2. `database/models.py`
-
-Peewee ORM models with automatic database switching based on `DATABASE_URL`:
-
-```python
-if DATABASE_URL:                      # Railway PostgreSQL
-    db = PostgresqlDatabase(...)
-else:                                 # Local SQLite
-    db = SqliteDatabase(DATABASE_PATH)
-```
-
-**`TrackedUser`** — The 270 seed users loaded from Excel:
+**`Feed`** — one row per topic feed:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `did` | PK CharField | AT Protocol decentralized identifier |
-| `handle` | CharField | e.g. `user.bsky.social` |
-| `display_name` | CharField | Full name |
-| `party` | CharField | e.g. `AKP`, `CHP`, `MHP` |
-| `stance` | CharField | `alliance` / `opposition` / `unknown` |
-| `domain` | CharField | `politics` / `science` / `both` |
-| `source` | CharField | `csv` / `starter_pack` / `search` |
-| `is_active` | BooleanField | Whether to track this user |
+| `id` | AutoField PK | Internal ID |
+| `feed_id` | CharField unique | URL-safe slug, ≤ 15 chars (Bluesky rkey limit) |
+| `display_name` | CharField | Human-readable name shown on Bluesky |
+| `description` | TextField | Feed description |
+| `language` | CharField | `tr` / `en` / `multi` |
+| `topic` | CharField | Original topic entered by user |
+| `at_uri` | CharField | AT URI after Bluesky registration |
+| `keywords` | TextField | JSON list — used for firehose pre-filter |
+| `seed_sentences` | TextField | JSON list — used to build centroid |
+| `centroid` | TextField | JSON float list — 768-dim normalized vector |
+| `embedding_model` | CharField | `berturk` / `minilm` / `multilingual` |
+| `similarity_threshold` | FloatField | Min cosine similarity to accept a post |
+| `is_active` | BooleanField | Whether worker listens for this feed |
+| `updated_at` | DateTimeField | Touched on any change — triggers worker reload |
 
-**`Post`** — Every classified post that passed NLP filtering:
+**`Post`** — every firehose post that matched a feed:
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `uri` | PK CharField | AT URI — e.g. `at://did:xxx/app.bsky.feed.post/xxx` |
-| `cid` | CharField | Content hash (for deduplication) |
-| `author_did` | CharField | Post author DID |
-| `author_handle` | CharField | Post author handle |
-| `text` | TextField | Full post text |
-| `domain_label` | CharField | `politics` or `science` |
-| `stance_label` | CharField | `alliance` / `opposition` / `neutral` |
-| `domain_score` | FloatField | Cosine similarity to domain centroid |
-| `stance_score` | FloatField | Stance confidence (0–1) |
-| `embedding` | TextField | JSON-encoded 768-dim BERTurk vector |
-| `created_at` | DateTimeField | When the post was created on Bluesky |
-| `indexed_at` | DateTimeField | When we processed it |
-| `language` | CharField | Detected language (usually `tr`) |
-| `like_count` | IntegerField | Engagement metric |
-| `repost_count` | IntegerField | Engagement metric |
-| `reply_count` | IntegerField | Engagement metric |
+| `uri` | CharField PK | AT URI of the post |
+| `feed` | ForeignKeyField | Which feed this post belongs to |
+| `domain_label` | CharField | Legacy: `politics` / `science` |
+| `domain_score` | FloatField | Cosine similarity to feed centroid |
+| `embedding` | TextField | JSON-encoded 768-dim vector |
 | `feed_score` | FloatField | Combined ranking score (indexed) |
+| `like_count` / `repost_count` / `reply_count` | IntegerField | Engagement |
 
-**`LikeEvent`** — Like events captured from the firehose for engagement updates.
+**`TrackedUser`** — seed users whose posts are always forwarded to the NLP pipeline regardless of keyword match.
 
----
+**`FeedSeedUser`** — per-feed seed user lists (many-to-many, for future per-feed user targeting).
 
-### 3. `data_collection/firehose_listener.py`
-
-The core ingestion service. Connects to `wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos` and processes every commit event in real time.
-
-**Class `FirehoseProcessor`:**
-
-```
-FirehoseProcessor
-├── setup()
-│   ├── Load seed DIDs from TrackedUser table
-│   └── Initialize NLP pipeline (load or build centroids)
-│
-├── on_message_handler(message)          ← called per firehose event
-│   ├── Decode CAR block (Merkle DAG)
-│   ├── Extract post record + metadata
-│   ├── Check: event type == app.bsky.feed.post?
-│   ├── Check: is_seed OR has_keyword?
-│   └── Push to post_queue
-│
-├── _process_queue_worker()              ← background thread
-│   ├── Drain queue every 5s or 32 posts
-│   └── Send batch to NLPPipeline
-│
-├── _stats_reporter()                    ← background thread
-│   └── Print throughput every 60s
-│
-└── start()
-    ├── Spin up worker threads
-    └── Subscribe to firehose (reconnects on failure)
-```
-
-**Statistics logged every 60 seconds:**
-```
-[Stats] received=67398 queued=2358 saved=142
-Batch done: 32 processed | total queued=2389 saved=143
-```
-
-**Thread safety:** The `post_queue` is a `collections.deque(maxlen=1000)` — fast O(1) appends and pops, bounded to prevent memory overflow during backpressure.
+**`LikeEvent`** — like events from the firehose (for engagement score updates).
 
 ---
 
-### 4. `data_collection/seed_discovery.py`
+### `services/llm_seed_generator.py`
 
-One-time setup script that populates `tracked_users` from an Excel spreadsheet.
-
-**Input:** `bsky_manual_minimal.xlsx` — 273 rows, each with a Bluesky handle and metadata (party, domain, display name).
-
-**Process:**
-1. Read Excel with pandas, filter rows that have a `bsky_handle` value
-2. Authenticate with Bluesky using app password
-3. For each row: resolve handle → DID via `client.resolve_handle()`
-4. Infer stance from party:
-   - Alliance: `AKP`, `MHP`
-   - Opposition: `CHP`, `HDP`, `DEM`, `İYİ Parti`, `DEVA`, `ZAFER`, `TİP`
-5. Upsert into `TrackedUser` (safe to re-run)
-6. Rate-limit: 0.5 second delay between API calls
-
-**Result:** 270 users saved (3 handles failed to resolve due to account changes).
-
----
-
-### 5. `nlp/embedder.py`
-
-**Class `TurkishEmbedder`:**
-
-Wraps `sentence-transformers` with the BERTurk NLI/STS model fine-tuned for semantic similarity in Turkish.
-
-**Model:** `emrecan/bert-base-turkish-cased-mean-nli-stsb-tr`
-- Architecture: BERT Base (12 layers, 12 heads, 768 hidden)
-- Vocabulary: 32,000 Turkish cased tokens
-- Trained on: NLI + STS-B tasks in Turkish
-- Output: Mean-pooled token embeddings, normalized to unit length
-- Download size: ~440 MB (cached after first run)
-
-**Text preprocessing pipeline:**
-```
-raw text
-  → remove URLs (http/https)
-  → remove @mentions
-  → strip # from hashtags (keep word)
-  → collapse multiple whitespace
-  → truncate to 512 characters (BERT token limit)
-```
-
-**Key methods:**
-- `embed(text)` → `(768,)` numpy array
-- `embed_batch(texts, batch_size=32)` → `(N, 768)` numpy matrix
-- `vector_to_json(vector)` → JSON string for DB storage
-- `json_to_vector(json_str)` → numpy array
-
-**Device selection:** Automatically uses GPU (`cuda`) if available, falls back to CPU. On Railway CPU-only deployment, embedding takes ~50ms per post.
-
----
-
-### 6. `nlp/domain_classifier.py`
-
-**Class `DomainClassifier`:**
-
-Zero-shot classification using centroid similarity — no labeled training data required.
-
-**Algorithm:**
-
-```
-For each incoming post:
-
-  1. Compute BERTurk embedding: e ∈ ℝ⁷⁶⁸
-
-  2. For each domain d ∈ {politics, science}:
-       sim(d) = cosine_similarity(e, centroid_d)
-
-  3. Filter: above = {d : sim(d) ≥ DOMAIN_SIMILARITY_THRESHOLD}
-
-  4. If |above| ≥ 1:
-       return argmax(sim), max(sim)   ← always ONE domain, never "both"
-
-  5. Else:
-       return 'other', 0.0            ← discard this post
-```
-
-**Centroid construction:**
-
-Each centroid is the mean embedding of ~45 representative seed sentences for that domain. Sentences are written to resemble actual Turkish tweets (colloquial, short, hashtag-heavy):
-
-*Politics examples:*
-- `"Erdoğan bugün TBMM'de konuştu, muhalefet sert tepki verdi"`
-- `"CHP'nin yeni adayı açıklandı, sosyal medya yıkıldı"`
-- `"Belediye başkanı görevden alındı, kayyum atandı"`
-- `"Meclis gündeminde anayasa tartışması var"`
-
-*Science examples:*
-- `"Yeni makalemiz arXiv'e yüklendi, link biyoda"`
-- `"Nature'da yayınlanan çalışmamız çok ilgi gördü"`
-- `"Doktora savunmam geçti! Çok mutluyum"`
-- `"TÜBİTAK projesine kabul edildim, heyecanlıyım"`
-
-**Sample similarity scores (empirical):**
-| Post | pol sim | sci sim | Label |
-|------|---------|---------|-------|
-| `"Erdogan bugün TBMM'de konuştu"` | 0.348 | 0.242 | politics |
-| `"Yeni anayasa mecliste oylanacak"` | 0.495 | 0.325 | politics |
-| `"Yapay zeka araştırmamız Nature'da"` | 0.323 | 0.601 | science |
-| `"İklim değişikliği yeni bulgular"` | 0.440 | 0.534 | science |
-| `"Bugün hava güzel"` | 0.201 | 0.201 | other |
-
-**Centroid persistence:** Saved to `data/centroids.npy` as a dict `{domain: centroid_vector}`. If the file is missing at startup (e.g., fresh Railway deploy), centroids are rebuilt from keywords automatically and then saved.
-
----
-
-### 7. `nlp/stance_detector.py`
-
-Detects political stance only for posts already classified as `politics`.
-
-**Class `StanceDetectorV1`** (production, keyword + centroid):
-
-```
-For each politics post:
-
-  1. Compute cosine similarity to alliance_centroid and opposition_centroid
-
-  2. If max(sim) ≥ STANCE_CONFIDENCE_THRESHOLD (0.60):
-       return argmax(sim), max(sim)
-
-  3. Else: keyword fallback
-       count_alliance  = matches in ALLIANCE_KEYWORDS
-       count_opposition = matches in OPPOSITION_KEYWORDS
-       if count_alliance > count_opposition: return 'alliance'
-       if count_opposition > count_alliance: return 'opposition'
-       else: return 'neutral'
-```
-
-*Alliance centroid built from sentences like:*
-- `"Cumhur ittifakı ülkenin istikrarı için önemli adımlar atıyor"`
-- `"Savunma sanayisinde büyük başarılar elde ettik"`
-
-*Opposition centroid built from sentences like:*
-- `"Muhalefet halkın ekonomik sıkıntılarına dikkat çekiyor"`
-- `"CHP yeni reform önerilerini paylaştı"`
-
-**Class `StanceDetectorV2`** (advanced, fine-tuned):
-- Requires 500+ manually labeled posts per class
-- Fine-tunes BERTurk as a 3-class classifier
-- Needs GPU for practical training time (~30 minutes)
-- Documented in `scripts/fine_tune_stance.py`
-
----
-
-### 8. `nlp/pipeline.py`
-
-**Class `NLPPipeline`:**
-
-Orchestrates the full NLP workflow. Called by `FirehoseProcessor` with batches of raw post data.
+Calls GPT-4o (or Claude as fallback) to generate seed data for any topic.
 
 ```python
-def load_models(centroid_path, stance_path):
-    # 1. Initialize TurkishEmbedder (loads BERTurk)
-    # 2. Initialize DomainClassifier
-    #    - Try to load centroids from .npy file
-    #    - If missing: build from keywords, then save
-    # 3. Initialize StanceDetector
-    #    - Same fallback logic for stance centroids
+from services.llm_seed_generator import generate_seeds
 
-def is_turkish(text) -> bool:
-    # langdetect.detect(text) returns language code
-    # Returns True if detected language is 'tr' with confidence ≥ MIN_TURKISH_PROB
+data = generate_seeds(topic="FIFA World Cup 2026", language="en")
+# data = {
+#   "keywords":       ["fifa", "world cup", "mbappe", ...],  # 100+ items
+#   "seed_sentences": ["Can't wait for the #WorldCup2026!", ...]  # 50+ items
+# }
+```
 
-def process_post(uri, cid, author_did, author_handle, text, created_at):
-    # 1. Turkish check → return None if not Turkish
-    # 2. Embed text → 768-dim vector
-    # 3. Classify domain → 'politics' | 'science' | 'other'
-    #    Return None if 'other' (post not saved)
-    # 4. If 'politics': detect stance
-    # 5. Compute initial feed_score
-    # 6. Upsert Post record to database
-    # 7. Return Post instance
+The prompt instructs the model to produce **social-media-style** sentences (short, hashtags, mentions) because centroid accuracy depends on seed sentences resembling real posts.
+
+---
+
+### `nlp/model_manager.py`
+
+Thread-safe singleton that loads and caches embedding models. Prevents loading the same 400 MB checkpoint multiple times when multiple feeds share a model type.
+
+```python
+from nlp.model_manager import ModelManager
+
+embedder = ModelManager.get_embedder("berturk")      # BERTurk 768-dim (Turkish)
+embedder = ModelManager.get_embedder("minilm")       # all-MiniLM-L6-v2 384-dim (English)
+embedder = ModelManager.get_embedder("multilingual") # paraphrase-multilingual-MiniLM-L12-v2
 ```
 
 ---
 
-### 9. `feed_generator/feed_logic.py`
+### `nlp/pipeline.py` — MultiPipeline
 
-The ranking algorithm that determines the order posts appear in the feed.
+The core of the multi-feed classification system.
+
+**Startup:**
+```
+MultiPipeline.load()
+  ├── Query all active Feed records from DB
+  ├── Build keyword_index: {keyword → {feed_id, ...}}
+  ├── Load embedder per model_type (via ModelManager)
+  ├── Build FeedClassifier per feed (centroid loaded from DB)
+  └── Auto-build centroid for feeds where centroid IS NULL
+```
+
+**Per-post processing:**
+```
+process_post(uri, text, ...)
+  ├── ① get_candidate_feed_ids(text)
+  │     → O(K) scan of keyword_index, returns {feed_ids}
+  ├── ② For each candidate feed:
+  │     ├── Language check (tr / en / multi)
+  │     └── cosine_similarity(embed(text), feed.centroid)
+  │         → score ≥ feed.similarity_threshold → candidate
+  └── ③ Save post to DB linked to highest-scoring feed
+```
+
+**Hot reload (every 60 s):**
+```
+MultiPipeline.reload()
+  ├── Query feeds WHERE updated_at > last_reload
+  ├── If any changed → _do_reload()
+  └── Keyword index and classifiers rebuilt atomically
+```
+
+---
+
+### `data_collection/firehose_listener.py`
+
+Connects to `wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos`.
+
+**Filter chain (fast → slow):**
+
+1. Event type == `app.bsky.feed.post` (drops likes, follows, etc.)
+2. Author DID in `seed_dids` set **OR** text contains any feed keyword (`O(1)` / `O(K)`)
+3. Push to `deque(maxlen=1000)` queue
+4. Background thread drains queue in batches of 32 → `MultiPipeline.process_post()`
+
+**Three background threads:**
+- `_process_queue_worker` — NLP processing every 5 s
+- `_reload_worker` — polls DB for new/changed feeds every 60 s
+- `_stats_reporter` — prints throughput every 60 s
+
+**Bootstrap on first run:**
+If no feeds exist in DB, creates `turkiye-siyaset` and `turkiye-bilim` using hardcoded keywords from `config/settings.py` and seed sentences from `DomainClassifier.get_politics_sentences()` / `get_science_sentences()`.
+
+---
+
+### `feed_generator/server.py`
+
+Flask app implementing AT Protocol feed generator endpoints.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /.well-known/did.json` | DID document for feed identity |
+| `GET /xrpc/app.bsky.feed.describeFeedGenerator` | Lists all feeds with `at_uri IS NOT NULL` from DB |
+| `GET /xrpc/app.bsky.feed.getFeedSkeleton?feed=<uri>` | Returns ranked post URIs for the given feed |
+| `GET /health` | Status: `{status, total_posts, active_feeds}` |
+| `GET /admin/*` | Admin panel (Vue.js UI) |
+
+Feed routing is **dynamic** — `getFeedSkeleton` looks up the feed by `Feed.at_uri` in the database. No hardcoded feed URIs.
+
+---
+
+### `feed_generator/feed_logic.py`
 
 **Feed score formula:**
 
 ```
-feed_score = (nlp_weight * domain_score + engagement_weight * engagement_norm) * recency_boost
+feed_score = (domain_score × 0.5 + log1p(engagement)/10 × 0.3) × recency_boost
 
-Where:
-  nlp_weight        = 0.5
-  engagement_weight = 0.3
-  domain_score      = cosine similarity to domain centroid (0–1)
-  engagement_norm   = log1p(likes + 2*reposts + 0.5*replies) / 10
-  recency_boost     = linear interpolation [0.5, 1.0] over 48 hours
+recency_boost = max(0.5,  1.0 − age_hours/96)
+  → 0 h old:  1.0
+  → 24 h old: 0.75
+  → 48+ h old: 0.5
 ```
 
-**Recency boost:**
-- Post age = 0 hours → boost = 1.0 (full weight)
-- Post age = 24 hours → boost = 0.75
-- Post age = 48+ hours → boost = 0.5 (floor)
-
-This means a fresh post with moderate NLP score will outrank an old post with a perfect NLP score — keeping feeds timely.
-
-**Pagination:** Uses cursor-based pagination. The cursor is the ISO 8601 timestamp of the last returned post's `indexed_at`. Each request returns posts created before that cursor, enabling infinite scroll.
-
-**`get_feed_posts(domain, cursor, limit)`:**
-```python
-query = (
-    Post.select()
-    .where(Post.domain_label == domain)   # strict domain — no 'both'
-    .order_by(Post.feed_score.desc(), Post.created_at.desc())
-    .limit(MAX_FEED_POSTS)
-)
-```
+`get_posts_for_feed(feed_id)` falls back to legacy `domain_label` for posts collected before the dynamic feed migration.
 
 ---
 
-### 10. `feed_generator/server.py`
+## NLP Pipeline
 
-Flask application implementing the AT Protocol feed generator specification.
+### Embedding Models
 
-**Endpoints:**
+| Model type | HuggingFace repo | Dim | Best for |
+|------------|-----------------|-----|---------|
+| `berturk` | `emrecan/bert-base-turkish-cased-mean-nli-stsb-tr` | 768 | Turkish feeds |
+| `minilm` | `sentence-transformers/all-MiniLM-L6-v2` | 384 | English feeds |
+| `multilingual` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384 | Mixed-language feeds |
 
-`GET /.well-known/did.json`
-```json
-{
-  "@context": ["https://www.w3.org/ns/did/v1"],
-  "id": "did:web:web-production-77bc8f.up.railway.app",
-  "service": [{
-    "id": "#bsky_fg",
-    "type": "BskyFeedGenerator",
-    "serviceEndpoint": "https://web-production-77bc8f.up.railway.app"
-  }]
-}
+### Centroid Classification
+
+Each feed has one centroid — the normalized mean embedding of its seed sentences. A post is accepted if:
+
+```
+cosine_similarity(embed(post_text), feed.centroid) ≥ feed.similarity_threshold
 ```
 
-`GET /xrpc/app.bsky.feed.describeFeedGenerator`
-```json
-{
-  "did": "did:web:...",
-  "feeds": [
-    {"uri": "at://did:plc:.../app.bsky.feed.generator/turkiye-siyaset"},
-    {"uri": "at://did:plc:.../app.bsky.feed.generator/turkiye-bilim"}
-  ]
-}
-```
+Default threshold: `0.30`. The optimal value depends on the topic — niche technical topics may need a lower threshold.
 
-`GET /xrpc/app.bsky.feed.getFeedSkeleton?feed=<uri>&cursor=<ts>&limit=<n>`
-```json
-{
-  "cursor": "2024-01-15T10:30:00.000Z",
-  "feed": [
-    {"post": "at://did:xxx/app.bsky.feed.post/aaa"},
-    {"post": "at://did:yyy/app.bsky.feed.post/bbb"}
-  ]
-}
-```
+### Language Detection
 
-`GET /health`
-```json
-{"status": "ok", "posts_in_db": 1234}
-```
-
-**Database connection lifecycle:** One connection per request (opened in `before_request`, closed in `teardown_request`) using Peewee's `database.connect(reuse_if_open=True)`.
-
-**Startup:** Creates the `data/` directory and all DB tables if they don't exist — safe to run on a fresh Railway deployment.
-
-**Production server:** `waitress-serve` (not Flask dev server) as specified in `Procfile`.
+Uses `langdetect`. Language check is per-feed:
+- `language = 'tr'` → require Turkish
+- `language = 'en'` → require English
+- `language = 'multi'` → accept any language
 
 ---
 
-### 11. Scripts
+## Feed Ranking
 
-**`scripts/publish_feed.py`**
+| Factor | Weight | Notes |
+|--------|--------|-------|
+| NLP similarity score | 50% | Topical relevance |
+| Engagement (likes, reposts, replies) | 30% | Log-scaled to avoid viral dominance |
+| Recency | Multiplier | Decays linearly over 48 h |
 
-One-time script run after the feed server is publicly accessible. Authenticates with Bluesky and creates two `app.bsky.feed.generator` records:
-
-```
-turkiye-siyaset → "Türkiye Siyaset"   Description: Turkish political discourse feed
-turkiye-bilim   → "Türkiye Bilim"     Description: Turkish science and research feed
-```
-
-The resulting AT URIs (e.g. `at://did:plc:xxx/app.bsky.feed.generator/turkiye-siyaset`) are stored in `.env` as `FEED_URI_POLITICS` and `FEED_URI_SCIENCE`.
-
-**`scripts/build_domain_centroids.py`**
-
-Standalone script to pre-compute centroid vectors and save them to `data/centroids.npy`. Includes sanity checks to verify that known politics/science/noise sentences are classified correctly. The firehose listener also builds centroids on startup if the file is missing, so this script is optional but useful for inspecting centroid quality before deployment.
+Scores are recomputed live on each `getFeedSkeleton` request to reflect current engagement.
 
 ---
 
-## NLP Classification Details
+## Admin Panel
 
-### Why Zero-Shot Centroid Similarity?
+**URL:** `/admin`
 
-Training a supervised classifier would require hundreds of manually labeled Turkish posts per category. Instead, we use the fact that BERTurk embeddings encode semantic meaning — similar texts cluster together in embedding space. By computing the "center" (centroid) of a representative set of politics and science sentences, we get a reference point and classify new posts by proximity.
+Built with Vue 3 (CDN, no build step) and custom glassmorphism CSS. Jinja2 renders server data; Vue handles interactivity with `[[ ]]` delimiters to avoid template conflicts.
 
-**Advantages:**
-- No labeled data required
-- Easy to update by adding/removing seed sentences
-- Works well even with Turkish social media language (abbreviations, hashtags, slang)
+### Pages
 
-**Threshold (0.30):** Empirically determined from testing with real Bluesky posts. Genuine politics/science posts score 0.35–0.60+; irrelevant posts score below 0.25.
+**Dashboard (`/admin/`)**
+- Stats bar: total feeds, active feeds, total posts
+- Feed cards: status badge (Active / Stopped), keyword count, post count, centroid status
+- Per-card actions: ⏸ Stop / ▶ Start / ⚙ Details / 🗑 Delete (with confirmation modal)
 
-### Why No Keyword Fallback in the Classifier?
+**New Feed (`/admin/feeds/new`)**
+- Step 1 — AI Generation:
+  - Enter topic + language
+  - Click "Generate Seeds with AI" → calls GPT-4o → displays keyword cloud + sentence preview
+  - Animated per-keyword appearance
+- Step 2 — Configuration:
+  - Feed ID (≤ 15 chars, Bluesky rkey limit enforced client + server side)
+  - Display name, description, language, embedding model, similarity threshold
+  - Toggle: "Publish to Bluesky automatically"
 
-An earlier version used keyword matching as a fallback when no domain scored above the threshold. This caused false positives — a post mentioning "üniversite" (university) in a personal context (e.g. "üniversite arkadaşıyla buluştum") would be classified as science. The keyword fallback was removed entirely; now only centroid similarity determines domain.
-
-### Strict Domain Assignment
-
-A post can only belong to **one** domain. If both `politics` and `science` scores are above the threshold, the higher-scoring domain wins. The label `'both'` is never used. This ensures each post appears in exactly one feed.
-
----
-
-## Ranking Algorithm
-
-Posts in each feed are sorted by `feed_score`, a weighted combination of:
-
-| Factor | Weight | Rationale |
-|--------|--------|-----------|
-| NLP domain similarity | 50% | Ensures topical relevance |
-| Engagement (likes, reposts, replies) | 30% | Surfaces quality content |
-| Recency boost | Variable | Keeps feed fresh |
-
-The recency boost is a multiplier (0.5–1.0) that decays linearly over 48 hours, preventing old posts from permanently dominating.
-
-Feed scores are periodically refreshed as engagement counts change (called every 5 minutes via `refresh_feed_scores()`).
+**Feed Detail (`/admin/feeds/<id>`)**
+- Hero: feed name, status badges, AT URI
+- Stats row: Feed ID, threshold, keyword count, seed sentence count
+- Keyword cloud (animated pill tags)
+- Seed sentence list (scrollable)
+- Recent posts table with score bars
+- Actions: Stop/Start, Rebuild Centroid, Publish to Bluesky (shown when AT URI is missing), Delete
 
 ---
 
 ## Deployment
 
+### Railway Setup
+
+Two Railway services in the same project, sharing one PostgreSQL database.
+
+**Web service (`web`)**
+- Builder: Railpack
+- Install: `requirements.txt` (Flask, atproto, openai — no torch)
+- Start: `waitress-serve --host=0.0.0.0 feed_generator.server:app`
+- Handles: AT Protocol feed endpoints + admin panel
+
+**Worker service (`BlueSky`)**
+- Builder: `Dockerfile.worker`
+- Installs CPU-only PyTorch + `requirements-nlp.txt`
+- Start: `python data_collection/firehose_listener.py`
+- Restart: Always
+- Mount Railway Volume at `/hf_cache` to cache HuggingFace models (~440 MB BERTurk)
+
 ### Local Development
 
-**Prerequisites:** Python 3.11, pip, PostgreSQL or SQLite
-
-```bash
-# 1. Clone repo and enter directory
+```powershell
+# 1. Clone and enter directory
 git clone https://github.com/osmankantarcioglu/BlueSky.git
 cd BlueSky
 
-# 2. Create virtual environment
-python -m venv venv
-source venv/bin/activate        # Linux/macOS
-venv\Scripts\activate           # Windows
+# 2. Virtual environment
+python -m venv .venv
+.venv\Scripts\Activate.ps1  # Windows
+# source .venv/bin/activate  # Linux/macOS
 
-# 3. Install NLP dependencies (includes ML libraries)
+# 3. Install full NLP stack
 pip install -r requirements-nlp.txt
+pip install openai
 
-# 4. Set up environment
-cp .env.example .env
-# Edit .env with your Bluesky credentials and DATABASE_URL
+# 4. Configure environment
+copy .env.example .env
+# Edit .env: set BSKY_HANDLE, BSKY_APP_PASSWORD, OPENAI_API_KEY
+# Comment out DATABASE_URL to use local SQLite
 
-# 5. Initialize database
-python -c "from database.models import create_tables; create_tables()"
+# 5. Terminal 1 — Flask web server
+python feed_generator/server.py
 
-# 6. Load seed users (requires bsky_manual_minimal.xlsx)
-python data_collection/seed_discovery.py
-
-# 7. (Optional) Pre-build centroids
-python scripts/build_domain_centroids.py
-
-# 8. Start the firehose listener
+# 6. Terminal 2 — NLP worker (downloads BERTurk ~400MB on first run)
 python data_collection/firehose_listener.py
 
-# 9. In a separate terminal, start the feed server
-waitress-serve --host=0.0.0.0 --port=8080 feed_generator.server:app
-```
-
-### Railway Production
-
-The production setup uses two separate Railway services in the same project, sharing one PostgreSQL database.
-
-**Service 1: Feed Server (web)**
-- Builder: Railpack (default)
-- `requirements.txt`: lightweight — no torch or transformers
-- Start command: defined in `Procfile`
-- Needs: `DATABASE_URL`, `BSKY_HANDLE`, `BSKY_APP_PASSWORD`, `FEED_DOMAIN`, `FEED_URI_POLITICS`, `FEED_URI_SCIENCE`
-- Healthcheck path: `/health`
-
-**Service 2: NLP Worker (firehose listener)**
-- Builder: Dockerfile → `Dockerfile.worker`
-- `Dockerfile.worker` installs CPU-only PyTorch + sentence-transformers
-- Start command: `python data_collection/firehose_listener.py` (in CMD)
-- Restart policy: **Always** (reconnects to firehose if disconnected)
-- Needs: same env vars as web service
-- Volume: mount at `/hf_cache` for HuggingFace model cache (prevents re-download on restart)
-
-**`Dockerfile.worker` highlights:**
-```dockerfile
-FROM python:3.11-slim
-# CPU-only PyTorch → much smaller than GPU build
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
-COPY requirements-nlp.txt .
-RUN pip install -r requirements-nlp.txt
-ENV HF_HOME=/hf_cache
-CMD ["python", "data_collection/firehose_listener.py"]
-```
-
-**One-time setup (run locally after server is deployed):**
-```bash
-# Publish feeds to Bluesky (server must be live at FEED_DOMAIN)
-python scripts/publish_feed.py
-# Copy the printed feed URIs into Railway env vars
+# Admin panel: http://localhost:5000/admin
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BSKY_HANDLE` | Yes | Your Bluesky handle (e.g. `user.bsky.social`) |
-| `BSKY_APP_PASSWORD` | Yes | Bluesky app password (not your login password) |
-| `FEED_DOMAIN` | Yes | Public domain of your Railway web service |
-| `DATABASE_URL` | Prod | PostgreSQL connection string (Railway provides this) |
-| `DATABASE_PATH` | Dev | SQLite file path (default: `data/feeds.db`) |
-| `FEED_URI_POLITICS` | Yes | AT URI for the politics feed (from `publish_feed.py`) |
-| `FEED_URI_SCIENCE` | Yes | AT URI for the science feed (from `publish_feed.py`) |
-| `HF_HOME` | Worker | HuggingFace cache directory (use Railway volume path) |
-| `TRANSFORMERS_CACHE` | Worker | Same as `HF_HOME` (legacy env var) |
+| Variable | Service | Description |
+|----------|---------|-------------|
+| `BSKY_HANDLE` | web + worker | Bluesky handle (e.g. `user.bsky.social`) |
+| `BSKY_APP_PASSWORD` | web + worker | Bluesky **app password** (Settings → App Passwords) |
+| `FEED_DOMAIN` | web + worker | Public domain of Railway web service |
+| `DATABASE_URL` | web + worker | PostgreSQL connection string (Railway auto-sets) |
+| `DATABASE_PATH` | local dev | SQLite file path (default: `data/feeds.db`) |
+| `OPENAI_API_KEY` | web + worker | GPT-4o seed generation in admin panel |
+| `FLASK_SECRET_KEY` | web | Flask session secret (required for flash messages) |
+| `HF_HOME` | worker | HuggingFace model cache path (Railway volume) |
+| `LLM_PROVIDER` | web | `openai` (default) or `anthropic` |
 
 ---
 
 ## Database Schema
+
+### `feeds`
+```sql
+CREATE TABLE feeds (
+    id                  SERIAL PRIMARY KEY,
+    feed_id             VARCHAR(64) UNIQUE NOT NULL,
+    display_name        VARCHAR(128) NOT NULL,
+    description         TEXT DEFAULT '',
+    language            VARCHAR DEFAULT 'tr',     -- tr | en | multi
+    topic               VARCHAR(256) NOT NULL,
+    at_uri              VARCHAR,                  -- set after Bluesky registration
+    rkey                VARCHAR,
+    keywords            TEXT DEFAULT '[]',        -- JSON list[str]
+    seed_sentences      TEXT DEFAULT '[]',        -- JSON list[str]
+    centroid            TEXT,                     -- JSON list[float] (768-dim)
+    embedding_model     VARCHAR DEFAULT 'berturk',
+    similarity_threshold FLOAT DEFAULT 0.30,
+    is_active           BOOLEAN DEFAULT TRUE,
+    created_at          TIMESTAMP,
+    updated_at          TIMESTAMP
+);
+```
+
+### `posts`
+```sql
+CREATE TABLE posts (
+    uri           VARCHAR PRIMARY KEY,
+    cid           VARCHAR NOT NULL,
+    author_did    VARCHAR NOT NULL,
+    author_handle VARCHAR,
+    text          TEXT NOT NULL,
+    feed_id       INTEGER REFERENCES feeds(id) ON DELETE SET NULL,
+    domain_label  VARCHAR,              -- legacy: 'politics' | 'science'
+    domain_score  FLOAT,
+    embedding     TEXT,                 -- JSON: 768 floats
+    created_at    TIMESTAMP NOT NULL,
+    indexed_at    TIMESTAMP,
+    language      VARCHAR,
+    like_count    INTEGER DEFAULT 0,
+    repost_count  INTEGER DEFAULT 0,
+    reply_count   INTEGER DEFAULT 0,
+    feed_score    FLOAT DEFAULT 0.0
+);
+CREATE INDEX ON posts (feed_score);
+CREATE INDEX ON posts (feed_id, created_at);
+```
 
 ### `tracked_users`
 ```sql
@@ -746,152 +533,68 @@ CREATE TABLE tracked_users (
     handle       VARCHAR NOT NULL,
     display_name VARCHAR,
     party        VARCHAR,
-    stance       VARCHAR DEFAULT 'unknown',   -- alliance|opposition|unknown
-    domain       VARCHAR DEFAULT 'politics',  -- politics|science|both
+    stance       VARCHAR DEFAULT 'unknown',
+    domain       VARCHAR DEFAULT 'politics',
     source       VARCHAR DEFAULT 'csv',
-    created_at   TIMESTAMP DEFAULT NOW(),
+    created_at   TIMESTAMP,
     is_active    BOOLEAN DEFAULT TRUE
 );
 ```
-
-### `posts`
-```sql
-CREATE TABLE posts (
-    uri          VARCHAR PRIMARY KEY,
-    cid          VARCHAR NOT NULL,
-    author_did   VARCHAR NOT NULL,
-    author_handle VARCHAR,
-    text         TEXT NOT NULL,
-    domain_label VARCHAR NOT NULL,            -- politics|science
-    stance_label VARCHAR DEFAULT 'neutral',   -- alliance|opposition|neutral
-    domain_score FLOAT DEFAULT 0.0,
-    stance_score FLOAT DEFAULT 0.0,
-    embedding    TEXT,                         -- JSON: [768 floats]
-    created_at   TIMESTAMP NOT NULL,
-    indexed_at   TIMESTAMP DEFAULT NOW(),
-    language     VARCHAR DEFAULT 'tr',
-    like_count   INTEGER DEFAULT 0,
-    repost_count INTEGER DEFAULT 0,
-    reply_count  INTEGER DEFAULT 0,
-    feed_score   FLOAT DEFAULT 0.0
-);
-
-CREATE INDEX idx_posts_domain_created ON posts (domain_label, created_at);
-CREATE INDEX idx_posts_feed_score     ON posts (feed_score);
-CREATE INDEX idx_posts_author         ON posts (author_did);
-```
-
-### `like_events`
-```sql
-CREATE TABLE like_events (
-    uri        VARCHAR NOT NULL,
-    liker_did  VARCHAR NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
----
-
-## Key Parameters
-
-| Parameter | Value | Where set |
-|-----------|-------|-----------|
-| `DOMAIN_SIMILARITY_THRESHOLD` | 0.30 | `config/settings.py` |
-| `STANCE_CONFIDENCE_THRESHOLD` | 0.60 | `config/settings.py` |
-| `MAX_FEED_POSTS` | 200 | `config/settings.py` |
-| `FEED_CACHE_TTL` | 300 s | `config/settings.py` |
-| `MIN_TURKISH_PROB` | 0.80 | `config/settings.py` |
-| Firehose batch size | 32 posts | `firehose_listener.py` |
-| Queue drain interval | 5 s | `firehose_listener.py` |
-| Stats report interval | 60 s | `firehose_listener.py` |
-| Seed user API delay | 0.5 s | `seed_discovery.py` |
-| Recency window | 48 h | `feed_logic.py` |
-| Ranking: NLP weight | 0.5 | `feed_logic.py` |
-| Ranking: engagement weight | 0.3 | `feed_logic.py` |
-
----
-
-## Performance Notes
-
-| Metric | Value |
-|--------|-------|
-| Firehose throughput | ~200–500 events/sec |
-| Post queue limit | 1,000 (deque maxlen) |
-| NLP embedding time (CPU) | ~50 ms/post |
-| NLP embedding time (GPU) | ~5 ms/post |
-| Batch size (NLP) | 32 posts |
-| BERTurk model size | ~440 MB |
-| Centroid build time | ~5–10 s |
-| Feed query time | <100 ms |
-| PostgreSQL connection | Peewee autorollback mode |
 
 ---
 
 ## Troubleshooting
 
-**`saved=0` in firehose stats**
-The threshold may be too high for the current centroid quality. Check actual similarity scores:
-```python
-from nlp.embedder import TurkishEmbedder
-from nlp.domain_classifier import DomainClassifier
-emb = TurkishEmbedder()
-clf = DomainClassifier(emb)
-clf.load_centroids('data/centroids.npy')
-print(clf.classify("Meclis bugün toplandı"))
-```
-If politics posts score < 0.30, lower `DOMAIN_SIMILARITY_THRESHOLD` or rebuild centroids with more tweet-like seed sentences.
+**"Centroid Pending" on feed detail**
+The web server doesn't have NLP deps — centroid is built by the worker. Check Railway BlueSky worker logs for `Building missing centroid for feed: <id>`. Usually resolves within 60 seconds of the worker's next poll cycle.
 
-**`FileNotFoundError: data/centroids.npy`**
-The `data/` directory does not exist. This is fixed in `save_centroids()` — it now calls `os.makedirs()` before writing. Pull the latest version and redeploy.
+**Bluesky publish failed: rkey too long**
+Bluesky AT Protocol enforces a 15-character maximum on record keys. Feed ID must be ≤ 15 chars. The form enforces this client-side; the backend validates and rejects longer IDs.
 
-**`DATABASE_URL` connection refused**
-Make sure you are using the **public** Railway PostgreSQL URL (`gondola.proxy.rlwy.net:12946`), not the internal hostname (`postgres.railway.internal`) which is only accessible within the Railway private network.
+**Feed shows no posts on Bluesky**
+1. Verify centroid is built (feed detail shows "Centroid ✓")
+2. Check worker logs for `MultiPipeline ready: N feeds`
+3. Give it a few minutes — the firehose needs time to accumulate matching posts
+4. Try lowering `similarity_threshold` if the topic is niche
 
-**Feed shows "This feed is empty" on Bluesky**
-Either no posts have been saved yet (give the firehose listener time to collect data), or the `FEED_URI_*` env vars don't match the URIs registered via `publish_feed.py`. Check `/xrpc/app.bsky.feed.getFeedSkeleton?feed=<uri>` directly on the Railway domain.
+**"Publish to Bluesky" button fails**
+Check that `BSKY_HANDLE`, `BSKY_APP_PASSWORD`, and `FEED_DOMAIN` are set in the **web** service Railway variables (not just the worker). Use a Bluesky **App Password** from Settings → App Passwords, not your login password.
 
-**Railway build timeout**
-The web service uses `requirements.txt` (no torch). The worker service uses `Dockerfile.worker` which installs CPU-only torch — significantly smaller than the GPU build. Never add torch to `requirements.txt`.
+**Worker not picking up new feeds**
+The worker polls every 60 seconds for changes (`Feed.updated_at > last_reload`). Check Railway BlueSky worker logs for `Feed config reloaded`. If the worker crashed, redeploy it.
 
-**Model re-downloaded on every worker restart**
-Mount a Railway Volume at `/hf_cache` and set `HF_HOME=/hf_cache` in worker env vars. After the first run, the ~440 MB BERTurk model is cached on the volume.
+**PostgreSQL transaction error on startup**
+Each table is created in its own `db.atomic()` savepoint. If one table fails (e.g. `posts` FK index on missing `feed_id`), others still succeed. Migrations (`ALTER TABLE posts ADD COLUMN IF NOT EXISTS feed_id`) run afterwards and fix schema gaps.
 
 ---
 
-## Feed URIs
-
-| Feed | AT URI |
-|------|--------|
-| Türkiye Siyaset | `at://did:plc:tl4dbarzqear47dehrsgtlvr/app.bsky.feed.generator/turkiye-siyaset` |
-| Türkiye Bilim | `at://did:plc:tl4dbarzqear47dehrsgtlvr/app.bsky.feed.generator/turkiye-bilim` |
-
-Feed server: `https://web-production-77bc8f.up.railway.app`
-
----
 ## Team
-Osman Kantarcıoğlu
-Selman Yılmaz
-Berke Bölükkaya
-Barış Güzeltaş
-Batuhan 
-Talha Dönderici
+
+| Name |
+|------|
+| Osman Kantarcıoğlu |
+| Selman Yılmaz |
+| Berke Bölükkaya |
+| Barış Güzeltaş |
+| Batuhan |
+| Talha Dönderici |
+
+---
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Protocol | AT Protocol (atproto 0.0.55) |
-| NLP embeddings | BERTurk (`emrecan/bert-base-turkish-cased-mean-nli-stsb-tr`) |
+| Protocol | AT Protocol (`atproto 0.0.55`) |
+| NLP embeddings | BERTurk · all-MiniLM-L6-v2 · paraphrase-multilingual-MiniLM |
 | ML framework | PyTorch (CPU) + sentence-transformers + scikit-learn |
+| AI seed generation | OpenAI GPT-4o (via `openai` SDK) |
 | Language detection | langdetect |
 | ORM | Peewee |
 | Database (dev) | SQLite |
 | Database (prod) | PostgreSQL (Railway) |
 | Web framework | Flask + Waitress |
+| Frontend | Vue 3 (CDN) + custom glassmorphism CSS |
 | Deployment | Railway (web + worker services) |
 | Container | Docker (worker only) |
 | Language | Python 3.11 |
-
-
-
-$#
