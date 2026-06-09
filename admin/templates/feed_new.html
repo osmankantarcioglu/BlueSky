@@ -136,7 +136,9 @@
             <div class="field-group">
               <label class="field-label">Display Name *</label>
               <input type="text" name="display_name" v-model="displayName"
-                     class="field-input" placeholder="FIFA World Cup 2026" required />
+                     class="field-input" placeholder="FIFA World Cup 2026" maxlength="24" required
+                     :style="{borderColor: displayName.length > 24 ? 'var(--red)' : ''}" />
+              <span class="field-hint">Max 24 chars — Bluesky displayName limit.</span>
             </div>
           </div>
 

@@ -96,6 +96,10 @@ def feed_create():
         flash("feed_id, display_name and topic are required.", "danger")
         return redirect(url_for("admin.feed_new"))
 
+    if len(display_name) > 24:
+        flash(f"Display name is too long ({len(display_name)} chars). Bluesky allows max 24 characters.", "danger")
+        return redirect(url_for("admin.feed_new"))
+
     try:
         from admin.services import create_feed
         feed = create_feed(
