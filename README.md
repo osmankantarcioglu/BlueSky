@@ -4,6 +4,8 @@ A dynamic, AI-powered Bluesky custom feed generation platform. Create, publish, 
 
 **Live admin panel:** `https://web-production-77bc8f.up.railway.app/admin`
 
+**📖 Documentation & Demo:** [osmankantarcioglu.github.io/BlueSky](https://osmankantarcioglu.github.io/BlueSky/)
+
 ---
 
 ## Table of Contents
