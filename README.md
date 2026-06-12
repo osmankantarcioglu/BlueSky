@@ -1,6 +1,8 @@
 # BlueSky Feed Studio
 
-[![BlueSky Feed Studio demo](https://img.youtube.com/vi/8HSX0YmVEkY/maxresdefault.jpg)](https://www.youtube.com/watch?v=8HSX0YmVEkY)
+[![▶️ Watch the demo video](https://img.youtube.com/vi/8HSX0YmVEkY/maxresdefault.jpg)](https://www.youtube.com/watch?v=8HSX0YmVEkY)
+
+**[▶️ Click the screenshot above to watch the demo video](https://www.youtube.com/watch?v=8HSX0YmVEkY)**
 
 A dynamic, AI-powered Bluesky custom feed generation platform. Create, publish, and manage any number of topic-based feeds directly from a web admin panel — no code changes required. Built on the AT Protocol firehose, NLP sentence embeddings, GPT-4o seed generation, and Vue.js — deployed on [Railway](https://railway.app).
 
